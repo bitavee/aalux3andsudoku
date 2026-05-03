@@ -150,42 +150,41 @@ void ReadingStatsManager::endSession(uint8_t progressPercent, uint32_t sessionPa
   sessionActive = false;
 
   const uint32_t elapsedMs = (xTaskGetTickCount() - sessionStartTick) * portTICK_PERIOD_MS;
-  const bool longEnough = (elapsedMs >= STATS_MIN_SESSION_MS);
+  // The "long enough" gate exists only to keep a 5-second "peek" from
+  // overwriting the user-visible Last Session row. Global totals and per-book
+  // running totals always count - otherwise All Time and Finished Books stay
+  // at zero for users whose typical sessions are under three minutes.
+  const bool longEnoughForLastSession = (elapsedMs >= STATS_MIN_SESSION_MS);
 
   if (sessionBookIndex < global.bookCount) {
-    // Progress percent is always updated to ensure the UI shows where you left off
-    if (progressPercent == 100 && books[sessionBookIndex].progressPercent < 100) {
-      global.totalBooksFinished++;
+    // Don't let a coarser update (e.g. the deep-sleep safety-net call with 0)
+    // walk the percentage backward. Real reader exits pass a precise value.
+    if (progressPercent >= books[sessionBookIndex].progressPercent) {
+      if (progressPercent == 100 && books[sessionBookIndex].progressPercent < 100) {
+        global.totalBooksFinished++;
+      }
+      books[sessionBookIndex].progressPercent = progressPercent;
     }
-    books[sessionBookIndex].progressPercent = progressPercent;
 
-    // FIX: Only update the 'last session' duration if the session was long enough.
-    // This preserves the previous meaningful session data if you just peeked at the book.
-    if (longEnough) {
+    if (longEnoughForLastSession) {
       books[sessionBookIndex].lastSessionMs = elapsedMs;
     }
+
+    books[sessionBookIndex].totalReadingMs += elapsedMs;
+    books[sessionBookIndex].sessionCount++;
+    books[sessionBookIndex].totalPagesRead += sessionPagesTurned;
   }
 
-  if (longEnough) {
-    if (sessionBookIndex < global.bookCount) {
-      books[sessionBookIndex].totalReadingMs += elapsedMs;
-      books[sessionBookIndex].sessionCount++;
-      books[sessionBookIndex].totalPagesRead += sessionPagesTurned;
-    }
-    global.totalReadingMs += elapsedMs;
-    global.totalSessionCount++;
-    global.sessionRing[global.sessionRingHead] = elapsedMs;
-    global.sessionRingHead = (global.sessionRingHead + 1) % STATS_SESSION_RING_SIZE;
-    if (global.sessionRingCount < STATS_SESSION_RING_SIZE) {
-      global.sessionRingCount++;
-    }
+  global.totalReadingMs += elapsedMs;
+  global.totalSessionCount++;
+  global.sessionRing[global.sessionRingHead] = elapsedMs;
+  global.sessionRingHead = (global.sessionRingHead + 1) % STATS_SESSION_RING_SIZE;
+  if (global.sessionRingCount < STATS_SESSION_RING_SIZE) {
+    global.sessionRingCount++;
   }
 
-  // Always re-sort by progress before saving to keep the list consistent
-  if (longEnough || (sessionBookIndex < global.bookCount)) {
-    sortByProgress();  // This ensures highest percentage is always at books[0]
-    save();
-  }
+  sortByProgress();
+  save();
 }
 
 uint32_t ReadingStatsManager::getLast7SessionsMs() const {
