@@ -14,6 +14,11 @@ class BookMetadataCache {
     std::string language;
     std::string coverItemHref;
     std::string textReferenceHref;
+    // Series metadata (Calibre + EPUB 3 collection). Empty when the book
+    // is not part of a series. seriesIndex is kept as a string so values
+    // like "1.5" round-trip exactly without forcing a float.
+    std::string seriesName;
+    std::string seriesIndex;
   };
 
   struct SpineEntry {

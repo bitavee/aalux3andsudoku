@@ -51,6 +51,9 @@ class Epub {
   const std::string& getTitle() const;
   const std::string& getAuthor() const;
   const std::string& getLanguage() const;
+  // Series metadata. Empty string when the book is not part of a series.
+  const std::string& getSeriesName() const;
+  const std::string& getSeriesIndex() const;
   std::string getCoverBmpPath(bool cropped = false) const;
   bool generateCoverBmp(bool cropped = false) const;
   std::string getThumbBmpPath() const;

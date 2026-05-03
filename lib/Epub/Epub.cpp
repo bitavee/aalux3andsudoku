@@ -124,6 +124,23 @@ bool Epub::parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata) {
 
   bookMetadata.textReferenceHref = opfParser.textReferenceHref;
 
+  // Series metadata. Trim leading/trailing whitespace -- expat hands us the
+  // raw text node which can include indentation when the EPUB pretty-prints
+  // <meta>Foundation</meta>.
+  auto trim = [](std::string& s) {
+    const auto first = s.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) {
+      s.clear();
+      return;
+    }
+    const auto last = s.find_last_not_of(" \t\r\n");
+    s = s.substr(first, last - first + 1);
+  };
+  bookMetadata.seriesName = opfParser.seriesName;
+  bookMetadata.seriesIndex = opfParser.seriesIndex;
+  trim(bookMetadata.seriesName);
+  trim(bookMetadata.seriesIndex);
+
   if (!opfParser.tocNcxPath.empty()) {
     tocNcxItem = opfParser.tocNcxPath;
   }
@@ -514,6 +531,22 @@ const std::string& Epub::getLanguage() const {
   }
 
   return bookMetadataCache->coreMetadata.language;
+}
+
+const std::string& Epub::getSeriesName() const {
+  static std::string blank;
+  if (!bookMetadataCache || !bookMetadataCache->isLoaded()) {
+    return blank;
+  }
+  return bookMetadataCache->coreMetadata.seriesName;
+}
+
+const std::string& Epub::getSeriesIndex() const {
+  static std::string blank;
+  if (!bookMetadataCache || !bookMetadataCache->isLoaded()) {
+    return blank;
+  }
+  return bookMetadataCache->coreMetadata.seriesIndex;
 }
 
 std::string Epub::getCoverBmpPath(bool cropped) const {

@@ -65,7 +65,7 @@ void DetailedStatsActivity::renderDetailedGrid() const {
   // Pick the thumb whose height is closest to coverH. 1-bit BMPs OR-downscale,
   // so picking a much larger thumb collapses to a black blob.
   // See StatsActivity::loadAndDrawCover for the full rationale.
-  static const int kCandidates[] = {150, 156, 226, 234, 300, 340, 400};
+  static const int kCandidates[] = {150, 156, 170, 226, 234, 300, 340, 400};
   std::string thumbPath;
   int bestDiff = INT_MAX;
   for (int res : kCandidates) {

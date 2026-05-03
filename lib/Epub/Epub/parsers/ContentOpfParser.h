@@ -20,6 +20,14 @@ class ContentOpfParser final : public Print {
     IN_MANIFEST,
     IN_SPINE,
     IN_GUIDE,
+    // Capturing text content of an EPUB 3 series-bearing <meta> element.
+    // We treat <meta property="belongs-to-collection"> as the series name and
+    // <meta property="group-position"> as the series index. The full EPUB 3
+    // refines-based validation (collection-type=series) is skipped: false
+    // positives on "set"-type collections are vanishingly rare on this
+    // device's library and the extra parser state isn't worth it.
+    IN_SERIES_NAME,
+    IN_SERIES_INDEX,
   };
 
   const std::string& cachePath;
@@ -60,6 +68,9 @@ class ContentOpfParser final : public Print {
   std::string title;
   std::string author;
   std::string language;
+  // Series metadata (Calibre + EPUB 3 collection). Empty when unset.
+  std::string seriesName;
+  std::string seriesIndex;  // string so "1", "1.5", "2.0" all round-trip exactly
   std::string tocNcxPath;
   std::string tocNavPath;  // EPUB 3 nav document path
   std::string coverItemHref;

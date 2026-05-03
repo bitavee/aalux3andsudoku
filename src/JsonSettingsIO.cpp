@@ -318,6 +318,12 @@ bool JsonSettingsIO::saveRecentBooks(const RecentBooksStore& store, const char* 
     obj["title"] = book.title;
     obj["author"] = book.author;
     obj["coverBmpPath"] = book.coverBmpPath;
+    if (!book.seriesName.empty()) {
+      obj["seriesName"] = book.seriesName;
+    }
+    if (!book.seriesIndex.empty()) {
+      obj["seriesIndex"] = book.seriesIndex;
+    }
   }
 
   String json;
@@ -336,12 +342,16 @@ bool JsonSettingsIO::loadRecentBooks(RecentBooksStore& store, const char* json) 
   store.recentBooks.clear();
   JsonArray arr = doc["books"].as<JsonArray>();
   for (JsonObject obj : arr) {
-    if (store.getCount() >= 10) break;
+    // No hard cap here -- the store enforces its own MAX_RECENT_BOOKS on
+    // every addBook(), and series stacks need every member present even
+    // when the visible home grid only shows 1 + 8 = 9 tiles.
     RecentBook book;
     book.path = obj["path"] | std::string("");
     book.title = obj["title"] | std::string("");
     book.author = obj["author"] | std::string("");
     book.coverBmpPath = obj["coverBmpPath"] | std::string("");
+    book.seriesName = obj["seriesName"] | std::string("");
+    book.seriesIndex = obj["seriesIndex"] | std::string("");
     store.recentBooks.push_back(book);
   }
 

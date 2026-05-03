@@ -20,6 +20,8 @@
 #include "MappedInputManager.h"
 #include "QrDisplayActivity.h"
 #include "ReaderUtils.h"
+#include "components/HomeProgressCache.h"
+#include "components/HomeRenderer.h"  // for kHeroCoverHeight / kThumbnailCoverHeight
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -92,14 +94,21 @@ void EpubReaderActivity::onEnter() {
   // Save current epub as last opened epub and add to recent books
   APP_STATE.openEpubPath = epub->getPath();
   APP_STATE.saveToFile();
-  RECENT_BOOKS.addBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), epub->getThumbBmpPath());
+  RECENT_BOOKS.addBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), epub->getThumbBmpPath(),
+                       epub->getSeriesName(), epub->getSeriesIndex());
 
   // Trigger first update
   requestUpdate();
-  // Generate thumbnail for Home screen
-  constexpr int HOME_THUMB_HEIGHT = 226;
-  if (!Storage.exists(epub->getThumbBmpPath(HOME_THUMB_HEIGHT).c_str())) {
-    epub->generateThumbBmp(HOME_THUMB_HEIGHT);
+  // Pre-generate the thumbnails the home screen will need so closing the
+  // book and returning home doesn't trigger a multi-second cover-rendering
+  // pass. Hero size is for the freshly-promoted book; thumb size is for
+  // when the user later opens a different book and this one slides into
+  // the thumbnail row.
+  if (!Storage.exists(epub->getThumbBmpPath(HomeRenderer::kHeroCoverHeight).c_str())) {
+    epub->generateThumbBmp(HomeRenderer::kHeroCoverHeight);
+  }
+  if (!Storage.exists(epub->getThumbBmpPath(HomeRenderer::kThumbnailCoverHeight).c_str())) {
+    epub->generateThumbBmp(HomeRenderer::kThumbnailCoverHeight);
   }
 
   // Generate thumbnail exactly for Stats cover display to avoid pixelation
@@ -818,6 +827,14 @@ void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
   } else {
     LOG_ERR("ERS", "Could not save progress!");
   }
+
+  // Push the byte-weighted percent into the home cache so the next home
+  // entry paints the progress ring instantly without re-parsing book.bin.
+  // recordProgress no-ops when the spineIndex+percent are unchanged, so
+  // turning pages within the same chapter doesn't hammer flash.
+  const int percent = static_cast<int>(epub->calculateProgress(currentSpineIndex, 0.0f) * 100.0f);
+  HomeProgressCache::getInstance().recordProgress(epub->getPath(), currentSpineIndex,
+                                                  static_cast<int8_t>(percent));
 }
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                         const int orientedMarginRight, const int orientedMarginBottom,

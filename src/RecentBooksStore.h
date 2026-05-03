@@ -7,6 +7,11 @@ struct RecentBook {
   std::string title;
   std::string author;
   std::string coverBmpPath;
+  // Optional series metadata. Empty when the book has no calibre:series /
+  // EPUB 3 belongs-to-collection. seriesIndex is kept as a string so values
+  // like "1.5" round-trip exactly.
+  std::string seriesName;
+  std::string seriesIndex;
 
   bool operator==(const RecentBook& other) const { return path == other.path; }
 };
@@ -32,10 +37,12 @@ class RecentBooksStore {
 
   // Add a book to the recent list (moves to front if already exists)
   void addBook(const std::string& path, const std::string& title, const std::string& author,
-               const std::string& coverBmpPath);
+               const std::string& coverBmpPath, const std::string& seriesName = {},
+               const std::string& seriesIndex = {});
 
   void updateBook(const std::string& path, const std::string& title, const std::string& author,
-                  const std::string& coverBmpPath);
+                  const std::string& coverBmpPath, const std::string& seriesName = {},
+                  const std::string& seriesIndex = {});
 
   // Get the list of recent books (most recent first)
   const std::vector<RecentBook>& getBooks() const { return recentBooks; }

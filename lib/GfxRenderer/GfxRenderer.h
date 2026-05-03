@@ -110,6 +110,11 @@ class GfxRenderer {
   void drawBitmap(const Bitmap& bitmap, int x, int y, int maxWidth, int maxHeight, float cropX = 0,
                   float cropY = 0) const;
   void drawBitmap1Bit(const Bitmap& bitmap, int x, int y, int maxWidth, int maxHeight) const;
+  /// Draws a 1-bit BMP into an exact (width, height) rectangle, stretching
+  /// non-uniformly so the output always fills the box. Used for cover
+  /// thumbnails where preserving aspect ratio would leave white margins on
+  /// one axis when the BMP's aspect doesn't match the cover slot.
+  void drawBitmapStretched1Bit(const Bitmap& bitmap, int x, int y, int width, int height) const;
   void fillPolygon(const int* xPoints, const int* yPoints, int numPoints, bool state = true) const;
 
   // Text

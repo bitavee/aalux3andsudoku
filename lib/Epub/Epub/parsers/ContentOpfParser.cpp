@@ -155,17 +155,58 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
   if (self->state == IN_METADATA && (strcmp(name, "meta") == 0 || strcmp(name, "opf:meta") == 0)) {
     bool isCover = false;
     std::string coverItemId;
+    // EPUB 2 / Calibre: <meta name="calibre:series" content="Foundation"/>
+    // and             : <meta name="calibre:series_index" content="1"/>
+    const char* metaName = nullptr;
+    const char* metaContent = nullptr;
+    // EPUB 3: <meta property="belongs-to-collection" id="c1">Foundation</meta>
+    //         <meta property="collection-type" refines="#c1">series</meta>
+    //         <meta property="group-position" refines="#c1">1</meta>
+    const char* property = nullptr;
+    const char* idAttr = nullptr;
+    const char* refines = nullptr;
 
     for (int i = 0; atts[i]; i += 2) {
-      if (strcmp(atts[i], "name") == 0 && strcmp(atts[i + 1], "cover") == 0) {
-        isCover = true;
-      } else if (strcmp(atts[i], "content") == 0) {
-        coverItemId = atts[i + 1];
+      const char* k = atts[i];
+      const char* v = atts[i + 1];
+      if (strcmp(k, "name") == 0) {
+        metaName = v;
+        if (strcmp(v, "cover") == 0) isCover = true;
+      } else if (strcmp(k, "content") == 0) {
+        metaContent = v;
+      } else if (strcmp(k, "property") == 0) {
+        property = v;
+      } else if (strcmp(k, "id") == 0) {
+        idAttr = v;
+      } else if (strcmp(k, "refines") == 0) {
+        refines = v;
       }
     }
 
-    if (isCover) {
-      self->coverItemId = coverItemId;
+    if (isCover && metaContent) {
+      self->coverItemId = metaContent;
+    }
+    (void)idAttr;
+    (void)refines;
+
+    // Calibre series (EPUB 2 + many EPUB 3 exports)
+    if (metaName && metaContent) {
+      if (strcmp(metaName, "calibre:series") == 0) {
+        self->seriesName = metaContent;
+      } else if (strcmp(metaName, "calibre:series_index") == 0) {
+        self->seriesIndex = metaContent;
+      }
+    }
+
+    // EPUB 3 collection name + position. Take the first occurrence we see;
+    // libraries with multiple collections (rare) fall back to whichever was
+    // declared first in the manifest.
+    if (property) {
+      if (strcmp(property, "belongs-to-collection") == 0 && self->seriesName.empty()) {
+        self->state = IN_SERIES_NAME;
+      } else if (strcmp(property, "group-position") == 0 && self->seriesIndex.empty()) {
+        self->state = IN_SERIES_INDEX;
+      }
     }
     return;
   }
@@ -338,6 +379,16 @@ void XMLCALL ContentOpfParser::characterData(void* userData, const XML_Char* s, 
     self->language.append(s, len);
     return;
   }
+
+  if (self->state == IN_SERIES_NAME) {
+    self->seriesName.append(s, len);
+    return;
+  }
+
+  if (self->state == IN_SERIES_INDEX) {
+    self->seriesIndex.append(s, len);
+    return;
+  }
 }
 
 void XMLCALL ContentOpfParser::endElement(void* userData, const XML_Char* name) {
@@ -373,6 +424,12 @@ void XMLCALL ContentOpfParser::endElement(void* userData, const XML_Char* name) 
   }
 
   if (self->state == IN_BOOK_LANGUAGE && strcmp(name, "dc:language") == 0) {
+    self->state = IN_METADATA;
+    return;
+  }
+
+  if ((self->state == IN_SERIES_NAME || self->state == IN_SERIES_INDEX) &&
+      (strcmp(name, "meta") == 0 || strcmp(name, "opf:meta") == 0)) {
     self->state = IN_METADATA;
     return;
   }

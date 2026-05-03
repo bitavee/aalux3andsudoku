@@ -80,7 +80,7 @@ void StatsActivity::onEnter() {
 
 void StatsActivity::prepareMissingCovers() {
   static constexpr int kRegenHeight = 156;  // matches EpubReaderActivity::onEnter pre-gen
-  static const int kCandidates[] = {150, 156, 226, 234, 300, 340, 400};
+  static const int kCandidates[] = {150, 156, 170, 226, 234, 300, 340, 400};
 
   const uint8_t total = StatsManager.getBookCount();
   if (total == 0) return;
@@ -443,7 +443,7 @@ bool StatsActivity::loadAndDrawCover(int x, int y, int w, int h, const BookStatE
   // Candidates cover both the new home sizes (HomeRenderer::kHeroCoverHeight
   // and kThumbnailCoverHeight) and legacy sizes from prior firmware (Lyra=226,
   // Lyra3Covers/Recent6=156, Classic=400, etc.).
-  static const int kCandidates[] = {150, 156, 226, 234, 300, 340, 400};
+  static const int kCandidates[] = {150, 156, 170, 226, 234, 300, 340, 400};
   std::string thumbPath;
   int bestDiff = INT_MAX;
   for (int res : kCandidates) {
