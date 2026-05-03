@@ -197,7 +197,13 @@ bool CrossPointSettings::loadFromBinaryFile() {
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, sleepScreenCoverFilter, SLEEP_SCREEN_COVER_FILTER_COUNT);
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, uiTheme);
+    {
+      // Legacy uiTheme byte - the field has been dropped but older binaries
+      // still write it at this offset. Read and discard so subsequent fields
+      // align correctly.
+      uint8_t legacyUiTheme;
+      serialization::readPod(inputFile, legacyUiTheme);
+    }
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, frontButtonBack, FRONT_BUTTON_HARDWARE_COUNT);
     if (++settingsRead >= fileSettingsCount) break;

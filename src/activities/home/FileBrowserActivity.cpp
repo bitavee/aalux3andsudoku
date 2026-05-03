@@ -8,6 +8,7 @@
 
 #include <algorithm>
 
+#include "../browser/OpdsBookBrowserActivity.h"
 #include "../util/ConfirmationActivity.h"
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
@@ -16,6 +17,12 @@
 
 namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
+
+bool isOpdsEntry(const std::string& entry) { return entry == tr(STR_ONLINE_CATALOG); }
+
+bool shouldShowOpdsEntry(const std::string& basepath) {
+  return basepath == "/" && SETTINGS.opdsServerUrl[0] != '\0';
+}
 }  // namespace
 
 void sortFileList(std::vector<std::string>& strs) {
@@ -103,6 +110,12 @@ void FileBrowserActivity::loadFiles() {
   }
   root.close();
   sortFileList(files);
+
+  // Surface the OPDS catalog at the very top of the root listing when a server
+  // is configured. Inserted after sort so it stays pinned regardless of name.
+  if (shouldShowOpdsEntry(basepath)) {
+    files.insert(files.begin(), tr(STR_ONLINE_CATALOG));
+  }
 }
 
 void FileBrowserActivity::onEnter() {
@@ -143,6 +156,13 @@ void FileBrowserActivity::loop() {
     if (files.empty()) return;
 
     const std::string& entry = files[selectorIndex];
+
+    // OPDS entry is a synthetic top-of-root item, not a real file.
+    if (isOpdsEntry(entry)) {
+      activityManager.pushActivity(std::make_unique<OpdsBookBrowserActivity>(renderer, mappedInput));
+      return;
+    }
+
     bool isDirectory = (entry.back() == '/');
 
     if (mappedInput.getHeldTime() >= GO_HOME_MS && !isDirectory) {

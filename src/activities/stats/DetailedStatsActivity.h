@@ -15,7 +15,7 @@ class DetailedStatsActivity final : public Activity {
 
  private:
   void renderDetailedGrid() const;
-  void drawCoverPlaceholder(int x, int y, int w, int h) const;
+  void drawCoverPlaceholder(int x, int y, int w, int h, const char* title) const;
 
   uint8_t _bookIndex;
 };

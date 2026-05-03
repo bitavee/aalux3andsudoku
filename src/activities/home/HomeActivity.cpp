@@ -1,153 +1,177 @@
 #include "HomeActivity.h"
 
-#include <Bitmap.h>
 #include <Epub.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
-#include <Utf8.h>
+#include <Logging.h>
 #include <Xtc.h>
 
+#include <algorithm>
 #include <cstring>
-#include <memory>
-#include <vector>
 
 #include "CrossPointSettings.h"
-#include "CrossPointState.h"
 #include "MappedInputManager.h"
-#include "RecentBooksStore.h"
-#include "activities/AppsActivity.h"
+#include "activities/network/CrossPointWebServerActivity.h"
+#include "activities/stats/StatsActivity.h"
+#include "components/HomeProgressCache.h"
+#include "components/HomeRenderer.h"
 #include "components/UITheme.h"
-#include "fontIds.h"
+#include "components/themes/BaseTheme.h"
 
-// Helper to check current theme
-bool HomeActivity::isRecent6Theme() const { return SETTINGS.uiTheme == CrossPointSettings::UI_THEME::RECENT6; }
+namespace {
+constexpr int kThumbsPerRow = 4;
+constexpr int kMaxHomeRecents = 1 + 2 * kThumbsPerRow;  // hero + 2 rows of 4
+constexpr int kHeroPaddingTop = 50;       // hero starts immediately under header
+constexpr int kHeroBottomGap = 12;        // gap between hero and divider line
+constexpr int kRowGap = 12;               // gap between two thumbnail rows
+constexpr int kMenuPaddingBottom = 20;    // bottom margin under menu tiles
+constexpr int kMenuItemBrowse = 0;
+constexpr int kMenuItemStats = 1;
+constexpr int kMenuItemTransfer = 2;
+constexpr int kMenuItemSettings = 3;
+constexpr int kMenuItemCount = 4;
+}  // namespace
 
-// ============================================================================
-// Original 1D Menu Helpers
-// ============================================================================
-int HomeActivity::getMenuItemCount() const {
-  int count = 4;  // File Browser, Recent Books, Apps, Settings
-  if (!recentBooks.empty()) {
-    count += recentBooks.size();
-  }
-  return count;
-}
+// ---------- Lifecycle ----------
 
-// ============================================================================
-// Data Loading & Helpers (Hybrid)
-// ============================================================================
+void HomeActivity::onEnter() {
+  Activity::onEnter();
 
-void HomeActivity::loadRecentBooks(int maxBooks) {
-  const auto& books = RECENT_BOOKS.getBooks();
+  recentBooks.clear();
+  recentsLoaded = false;
+  recentsLoading = false;
+  firstRenderDone = false;
+  coverBufferStored = false;
+  heroProgressLoaded = false;
+  freeCoverBuffer();
 
-  if (isRecent6Theme()) {
-    recentBooksRow1.clear();
-    recentBooksRow2.clear();
-    totalRecentBooks = 0;
-    recentBooksRow1.reserve(3);
-    recentBooksRow2.reserve(3);
+  loadRecentBooks(kMaxHomeRecents);
 
-    for (const RecentBook& book : books) {
-      if (totalRecentBooks >= maxBooks) break;
-      if (!Storage.exists(book.path.c_str())) continue;
-
-      if (recentBooksRow1.size() < 3) {
-        recentBooksRow1.push_back(book);
-      } else {
-        recentBooksRow2.push_back(book);
-      }
-      totalRecentBooks++;
-    }
+  if (recentBooks.empty()) {
+    focusRow = FOCUS_MENU;
+    focusIndex = 0;
   } else {
-    recentBooks.clear();
-    recentBooks.reserve(std::min(static_cast<int>(books.size()), maxBooks));
+    focusRow = FOCUS_HERO;
+    focusIndex = 0;
+  }
 
-    for (const RecentBook& book : books) {
-      if (recentBooks.size() >= maxBooks) break;
-      if (!Storage.exists(book.path.c_str())) continue;
-      recentBooks.push_back(book);
-    }
+  requestUpdate();
+}
+
+void HomeActivity::onExit() {
+  Activity::onExit();
+  freeCoverBuffer();
+  HomeProgressCache::getInstance().clear();
+}
+
+void HomeActivity::loop() {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    openFocused();
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+    moveFocus(-1, 0);
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+    moveFocus(+1, 0);
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+    moveFocus(0, -1);
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+    moveFocus(0, +1);
+    return;
   }
 }
 
-void HomeActivity::loadRecentCovers(int coverHeight) {
+// ---------- Recent books loading ----------
+
+void HomeActivity::loadRecentBooks(int max) {
+  const auto& books = RECENT_BOOKS.getBooks();
+  recentBooks.clear();
+  recentBooks.reserve(std::min(static_cast<int>(books.size()), max));
+  for (const RecentBook& book : books) {
+    if (static_cast<int>(recentBooks.size()) >= max) break;
+    if (!Storage.exists(book.path.c_str())) continue;
+    recentBooks.push_back(book);
+  }
+}
+
+void HomeActivity::loadRecentCovers() {
   if (recentsLoading) return;
   recentsLoading = true;
-  bool showingLoading = false;
+
+  bool showingPopup = false;
   Rect popupRect;
+  const int totalBooks = static_cast<int>(recentBooks.size());
   int progress = 0;
 
-  auto processBook = [&](RecentBook& book, int totalBooks) {
-    if (!book.coverBmpPath.empty()) {
-      std::string coverPath = UITheme::getCoverThumbPath(book.coverBmpPath, coverHeight);
-      if (!Storage.exists(coverPath.c_str())) {
-        if (FsHelpers::hasEpubExtension(book.path)) {
-          Epub epub(book.path, "/.crosspoint");
-          epub.load(false, true);
+  for (int i = 0; i < totalBooks; ++i) {
+    RecentBook& book = recentBooks[i];
+    if (book.coverBmpPath.empty()) {
+      ++progress;
+      continue;
+    }
 
-          if (!showingLoading) {
-            showingLoading = true;
-            popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-          }
-          GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / (totalBooks > 0 ? totalBooks : 1)));
-          bool success = epub.generateThumbBmp(coverHeight);
+    const int targetHeight = (i == 0) ? HomeRenderer::kHeroCoverHeight : HomeRenderer::kThumbnailCoverHeight;
+    const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, targetHeight);
+    if (Storage.exists(thumbPath.c_str())) {
+      ++progress;
+      continue;
+    }
 
-          if (!success && !isRecent6Theme()) {
-            RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
-            book.coverBmpPath = "";
-          }
+    if (FsHelpers::hasEpubExtension(book.path)) {
+      Epub epub(book.path, "/.crosspoint");
+      epub.load(false, true);
 
-          if (isRecent6Theme()) {
-            row1Rendered = false;
-            row2Rendered = false;
-          } else {
-            coverRendered = false;
-          }
-          requestUpdate();
-        } else if (FsHelpers::hasXtcExtension(book.path) && !isRecent6Theme()) {
-          Xtc xtc(book.path, "/.crosspoint");
-          if (xtc.load()) {
-            if (!showingLoading) {
-              showingLoading = true;
-              popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-            }
-            GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / (totalBooks > 0 ? totalBooks : 1)));
-            bool success = xtc.generateThumbBmp(coverHeight);
-            if (!success) {
-              RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
-              book.coverBmpPath = "";
-            }
-            coverRendered = false;
-            requestUpdate();
-          }
+      if (!showingPopup) {
+        showingPopup = true;
+        popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+      }
+      GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / std::max(totalBooks, 1)));
+
+      if (!epub.generateThumbBmp(targetHeight)) {
+        RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
+        book.coverBmpPath = "";
+      }
+    } else if (FsHelpers::hasXtcExtension(book.path)) {
+      Xtc xtc(book.path, "/.crosspoint");
+      if (xtc.load()) {
+        if (!showingPopup) {
+          showingPopup = true;
+          popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+        }
+        GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / std::max(totalBooks, 1)));
+        if (!xtc.generateThumbBmp(targetHeight)) {
+          RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
+          book.coverBmpPath = "";
         }
       }
     }
-    progress++;
-  };
-
-  if (isRecent6Theme()) {
-    for (RecentBook& book : recentBooksRow1) processBook(book, totalRecentBooks);
-    for (RecentBook& book : recentBooksRow2) processBook(book, totalRecentBooks);
-  } else {
-    for (RecentBook& book : recentBooks) processBook(book, recentBooks.size());
+    ++progress;
   }
 
   recentsLoaded = true;
   recentsLoading = false;
 }
 
+// ---------- Cover buffer ----------
+
 bool HomeActivity::storeCoverBuffer() {
   uint8_t* frameBuffer = renderer.getFrameBuffer();
   if (!frameBuffer) return false;
-
   freeCoverBuffer();
   const size_t bufferSize = renderer.getBufferSize();
   coverBuffer = static_cast<uint8_t*>(malloc(bufferSize));
-
-  if (!coverBuffer) return false;
+  if (!coverBuffer) {
+    LOG_ERR("HOME", "malloc failed for cover buffer: %u bytes", bufferSize);
+    return false;
+  }
   memcpy(coverBuffer, frameBuffer, bufferSize);
   return true;
 }
@@ -156,7 +180,6 @@ bool HomeActivity::restoreCoverBuffer() {
   if (!coverBuffer) return false;
   uint8_t* frameBuffer = renderer.getFrameBuffer();
   if (!frameBuffer) return false;
-
   memcpy(frameBuffer, coverBuffer, renderer.getBufferSize());
   return true;
 }
@@ -169,289 +192,230 @@ void HomeActivity::freeCoverBuffer() {
   coverBufferStored = false;
 }
 
-// ============================================================================
-// Navigation Routing (Recent6 specific)
-// ============================================================================
+// ---------- Navigation ----------
 
-void HomeActivity::focusMenu() {
-  carouselFocused = false;
-  menuSelectedTileIndex = 0;
-  requestUpdate();
+bool HomeActivity::rowIsFocusable(FocusRow row) const {
+  switch (row) {
+    case FOCUS_HERO:
+      return !recentBooks.empty();
+    case FOCUS_THUMBS_R1:
+      return recentBooks.size() > 1;
+    case FOCUS_THUMBS_R2:
+      return recentBooks.size() > 1 + kThumbsPerRow;  // need a 6th book to populate row 2
+    case FOCUS_MENU:
+      return true;
+  }
+  return false;
 }
 
-void HomeActivity::launchSelectedActivity() {
-  switch (menuSelectedTileIndex) {
-    case 0:
-      onFileBrowserOpen();
+int HomeActivity::rowItemCount(FocusRow row) const {
+  switch (row) {
+    case FOCUS_HERO:
+      return 1;
+    case FOCUS_THUMBS_R1:
+      return std::min(kThumbsPerRow, std::max(0, static_cast<int>(recentBooks.size()) - 1));
+    case FOCUS_THUMBS_R2:
+      return std::min(kThumbsPerRow, std::max(0, static_cast<int>(recentBooks.size()) - 1 - kThumbsPerRow));
+    case FOCUS_MENU:
+      return kMenuItemCount;
+  }
+  return 0;
+}
+
+void HomeActivity::moveFocus(int dRow, int dCol) {
+  if (dRow != 0) {
+    constexpr FocusRow rowOrder[] = {FOCUS_HERO, FOCUS_THUMBS_R1, FOCUS_THUMBS_R2, FOCUS_MENU};
+    constexpr int rowOrderCount = sizeof(rowOrder) / sizeof(rowOrder[0]);
+
+    const int currentCol = focusIndex;
+    int currentPos = 0;
+    for (int i = 0; i < rowOrderCount; ++i) {
+      if (rowOrder[i] == focusRow) {
+        currentPos = i;
+        break;
+      }
+    }
+
+    for (int step = 0; step < rowOrderCount; ++step) {
+      currentPos = (currentPos + dRow + rowOrderCount) % rowOrderCount;
+      const FocusRow candidate = rowOrder[currentPos];
+      if (!rowIsFocusable(candidate)) continue;
+
+      // When moving between the two thumbnail rows, keep the column so the
+      // focus rides directly up/down. Otherwise reset to col 0.
+      const bool wasThumbs = (focusRow == FOCUS_THUMBS_R1 || focusRow == FOCUS_THUMBS_R2);
+      const bool isThumbs = (candidate == FOCUS_THUMBS_R1 || candidate == FOCUS_THUMBS_R2);
+      focusRow = candidate;
+      if (wasThumbs && isThumbs) {
+        focusIndex = std::min(currentCol, rowItemCount(candidate) - 1);
+      } else {
+        focusIndex = 0;
+      }
+      requestUpdate();
+      return;
+    }
+    return;
+  }
+
+  if (dCol != 0) {
+    const int count = rowItemCount(focusRow);
+    if (count <= 1) return;
+    focusIndex = (focusIndex + dCol + count) % count;
+    requestUpdate();
+  }
+}
+
+void HomeActivity::openFocused() {
+  switch (focusRow) {
+    case FOCUS_HERO:
+      if (!recentBooks.empty()) {
+        activityManager.goToReader(recentBooks[0].path);
+      }
       break;
-    case 1:
-      onAppsOpen();
+    case FOCUS_THUMBS_R1: {
+      const int bookIdx = focusIndex + 1;  // hero is recents[0], R1 = recents[1..4]
+      if (bookIdx < static_cast<int>(recentBooks.size())) {
+        activityManager.goToReader(recentBooks[bookIdx].path);
+      }
       break;
-    case 2:
-      onSettingsOpen();
+    }
+    case FOCUS_THUMBS_R2: {
+      const int bookIdx = focusIndex + 1 + kThumbsPerRow;  // R2 = recents[5..8]
+      if (bookIdx < static_cast<int>(recentBooks.size())) {
+        activityManager.goToReader(recentBooks[bookIdx].path);
+      }
+      break;
+    }
+    case FOCUS_MENU:
+      switch (focusIndex) {
+        case kMenuItemBrowse:
+          activityManager.goToFileBrowser();
+          break;
+        case kMenuItemStats:
+          activityManager.pushActivity(std::make_unique<StatsActivity>(renderer, mappedInput));
+          break;
+        case kMenuItemTransfer:
+          activityManager.pushActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput));
+          break;
+        case kMenuItemSettings:
+          activityManager.goToSettings();
+          break;
+      }
       break;
   }
 }
 
-// ============================================================================
-// Activity Callbacks
-// ============================================================================
+// ---------- Geometry ----------
 
-void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToReader(path); }
-void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
-void HomeActivity::onRecentsOpen() { activityManager.goToRecentBooks(); }
-void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
-// Az AppsActivity elindítása az Activity Stack-en keresztül történik (pushActivity)
-void HomeActivity::onAppsOpen() { activityManager.pushActivity(std::make_unique<AppsActivity>(renderer, mappedInput)); }
+Rect HomeActivity::heroRect() const {
+  const int pageWidth = renderer.getScreenWidth();
+  return Rect{0, kHeroPaddingTop, pageWidth, HomeRenderer::kHeroHeight};
+}
 
-// ============================================================================
-// Lifecycle & Input Loop
-// ============================================================================
+Rect HomeActivity::dividerRect() const {
+  const int pageWidth = renderer.getScreenWidth();
+  return Rect{0, kHeroPaddingTop + HomeRenderer::kHeroHeight + kHeroBottomGap / 2, pageWidth,
+              HomeRenderer::kDividerHeight};
+}
 
-void HomeActivity::onEnter() {
-  Activity::onEnter();
+Rect HomeActivity::thumbsRow1Rect() const {
+  const int pageWidth = renderer.getScreenWidth();
+  return Rect{0, kHeroPaddingTop + HomeRenderer::kHeroHeight + kHeroBottomGap, pageWidth,
+              HomeRenderer::kThumbnailRowHeight};
+}
+
+Rect HomeActivity::thumbsRow2Rect() const {
+  const Rect r1 = thumbsRow1Rect();
+  return Rect{r1.x, r1.y + r1.height + kRowGap, r1.width, HomeRenderer::kThumbnailRowHeight};
+}
+
+Rect HomeActivity::menuRect() const {
+  const int pageWidth = renderer.getScreenWidth();
+  const int pageHeight = renderer.getScreenHeight();
+  return Rect{0, pageHeight - HomeRenderer::kBottomMenuHeight - kMenuPaddingBottom, pageWidth,
+              HomeRenderer::kBottomMenuHeight};
+}
+
+Rect HomeActivity::focusedItemRect() const {
+  switch (focusRow) {
+    case FOCUS_HERO:
+      return HomeRenderer::getHeroCoverRect(heroRect());
+    case FOCUS_THUMBS_R1: {
+      const int count = rowItemCount(FOCUS_THUMBS_R1);
+      return HomeRenderer::getThumbnailRect(thumbsRow1Rect(), focusIndex, count);
+    }
+    case FOCUS_THUMBS_R2: {
+      const int count = rowItemCount(FOCUS_THUMBS_R2);
+      return HomeRenderer::getThumbnailRect(thumbsRow2Rect(), focusIndex, count);
+    }
+    case FOCUS_MENU:
+      return HomeRenderer::getMenuTileRect(menuRect(), focusIndex);
+  }
+  return Rect{0, 0, 0, 0};
+}
+
+// ---------- Rendering ----------
+
+void HomeActivity::renderFull() {
+  renderer.clearScreen();
 
   const auto& metrics = UITheme::getInstance().getMetrics();
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight}, nullptr);
 
-  if (isRecent6Theme()) {
-    carouselSelectedIndex = 0;
-    carouselFocused = true;
-    menuSelectedTileIndex = 0;
-    loadRecentBooks(6);
+  if (recentBooks.empty()) {
+    HomeRenderer::drawHeroEmpty(renderer, heroRect());
   } else {
-    selectorIndex = 0;
-    loadRecentBooks(metrics.homeRecentBooksCount);
+    const int8_t heroProgress = HomeProgressCache::getInstance().getProgress(recentBooks[0].path);
+    HomeRenderer::drawHero(renderer, heroRect(), recentBooks[0], heroProgress);
   }
 
-  requestUpdate();
-}
+  if (recentBooks.size() > 1) {
+    HomeRenderer::drawDivider(renderer, dividerRect());
 
-void HomeActivity::onExit() {
-  Activity::onExit();
-  freeCoverBuffer();
-}
+    const int total = static_cast<int>(recentBooks.size());
+    const int row1End = std::min(total, 1 + kThumbsPerRow);
+    std::vector<RecentBook> row1(recentBooks.begin() + 1, recentBooks.begin() + row1End);
+    HomeRenderer::drawThumbnailRow(renderer, thumbsRow1Rect(), row1);
 
-void HomeActivity::loop() {
-  if (isRecent6Theme()) {
-    // --- RECENT6 LOGIC ---
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      if (carouselFocused && totalRecentBooks > 0) {
-        std::string path = (carouselSelectedIndex < 3) ? recentBooksRow1[carouselSelectedIndex].path
-                                                       : recentBooksRow2[carouselSelectedIndex - 3].path;
-        onSelectBook(path);
-      } else if (!carouselFocused) {
-        launchSelectedActivity();
-      }
-      return;
-    }
-
-    if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
-      if (carouselFocused) {
-        if (carouselSelectedIndex < 3 && totalRecentBooks > 3) {
-          carouselSelectedIndex = std::min(totalRecentBooks - 1, carouselSelectedIndex + 3);
-        } else {
-          focusMenu();
-        }
-      } else if (menuSelectedTileIndex == 0 || menuSelectedTileIndex == 1) {
-        menuSelectedTileIndex = 2;
-      }
-      requestUpdate();
-      return;
-    }
-
-    if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
-      if (!carouselFocused) {
-        if (menuSelectedTileIndex == 2) {
-          menuSelectedTileIndex = 0;
-        } else {
-          carouselFocused = true;
-          carouselSelectedIndex = (totalRecentBooks > 3) ? 3 + std::min(2, menuSelectedTileIndex)
-                                                         : std::min(totalRecentBooks - 1, menuSelectedTileIndex);
-          if (carouselSelectedIndex >= totalRecentBooks) carouselSelectedIndex = totalRecentBooks - 1;
-        }
-      } else if (carouselSelectedIndex >= 3) {
-        carouselSelectedIndex -= 3;
-      }
-      requestUpdate();
-      return;
-    }
-
-    if (mappedInput.wasReleased(MappedInputManager::Button::Right) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-      int totalElements = totalRecentBooks + 3;
-      int globalIndex = carouselFocused ? carouselSelectedIndex : (totalRecentBooks + menuSelectedTileIndex);
-
-      if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-        globalIndex = (globalIndex + 1) % totalElements;
-      } else {
-        globalIndex = (globalIndex - 1 + totalElements) % totalElements;
-      }
-
-      if (globalIndex < totalRecentBooks) {
-        carouselFocused = true;
-        carouselSelectedIndex = globalIndex;
-      } else {
-        carouselFocused = false;
-        menuSelectedTileIndex = globalIndex - totalRecentBooks;
-      }
-      requestUpdate();
-      return;
-    }
-
-  } else {
-    // --- ORIGINAL LOGIC ---
-    const int menuCount = getMenuItemCount();
-
-    buttonNavigator.onNext([this, menuCount] {
-      selectorIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
-      requestUpdate();
-    });
-
-    buttonNavigator.onPrevious([this, menuCount] {
-      selectorIndex = ButtonNavigator::previousIndex(selectorIndex, menuCount);
-      requestUpdate();
-    });
-
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      int idx = 0;
-      int menuSelectedIndex = selectorIndex - static_cast<int>(recentBooks.size());
-      const int fileBrowserIdx = idx++;
-      const int recentsIdx = idx++;
-      const int appsIdx = idx++;
-      const int settingsIdx = idx++;
-
-      if (selectorIndex < recentBooks.size()) {
-        onSelectBook(recentBooks[selectorIndex].path);
-      } else if (menuSelectedIndex == fileBrowserIdx) {
-        onFileBrowserOpen();
-      } else if (menuSelectedIndex == recentsIdx) {
-        onRecentsOpen();
-      } else if (menuSelectedIndex == appsIdx) {
-        onAppsOpen();
-      } else if (menuSelectedIndex == settingsIdx) {
-        onSettingsOpen();
-      }
+    if (total > 1 + kThumbsPerRow) {
+      std::vector<RecentBook> row2(recentBooks.begin() + 1 + kThumbsPerRow, recentBooks.end());
+      HomeRenderer::drawThumbnailRow(renderer, thumbsRow2Rect(), row2);
     }
   }
-}
 
-// ============================================================================
-// Rendering
-// ============================================================================
+  HomeRenderer::drawBottomMenu(renderer, menuRect());
+}
 
 void HomeActivity::render(RenderLock&&) {
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const auto pageWidth = renderer.getScreenWidth();
-  const auto pageHeight = renderer.getScreenHeight();
-
-  renderer.clearScreen();
-  bool bufferRestored = coverBufferStored && restoreCoverBuffer();
-
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding}, nullptr);
-
-  if (isRecent6Theme()) {
-    // --- RECENT 6 RENDERING ---
-    const int startY = metrics.homeTopPadding;
-    const int bookRowHeight = metrics.homeCoverTileHeight - 25;
-
-    int activeSel1 = (carouselFocused && carouselSelectedIndex < 3) ? carouselSelectedIndex : -1;
-    int activeSel2 = (carouselFocused && carouselSelectedIndex >= 3) ? (carouselSelectedIndex - 3) : -1;
-
-    int renderSel1 = coverBufferStored ? activeSel1 : -1;
-    int renderSel2 = coverBufferStored ? activeSel2 : -1;
-
-    GUI.drawRecentBookCover(renderer, Rect(0, startY, pageWidth, bookRowHeight), recentBooksRow1, renderSel1,
-                            row1Rendered, row1Stored, bufferRestored, [&]() { return true; });
-
-    if (!recentBooksRow2.empty()) {
-      GUI.drawRecentBookCover(renderer, Rect(0, startY + bookRowHeight + 10, pageWidth, bookRowHeight), recentBooksRow2,
-                              renderSel2, row2Rendered, row2Stored, bufferRestored, [&]() { return true; });
-    } else {
-      row2Rendered = true;
-    }
-
-    if (row1Rendered && row2Rendered && !coverBufferStored) {
-      storeCoverBuffer();
-      coverBufferStored = true;
-      bool tempRestored = true;
-
-      GUI.drawRecentBookCover(renderer, Rect(0, startY, pageWidth, bookRowHeight), recentBooksRow1, activeSel1,
-                              row1Rendered, row1Stored, tempRestored, [&]() { return true; });
-
-      if (!recentBooksRow2.empty()) {
-        GUI.drawRecentBookCover(renderer, Rect(0, startY + bookRowHeight + 10, pageWidth, bookRowHeight),
-                                recentBooksRow2, activeSel2, row2Rendered, row2Stored, tempRestored,
-                                [&]() { return true; });
-      }
-    }
-
-    // Asymmetrical Menu
-    const int menuRowHeight = 40;
-    const int menuGap = 10;
-    const int bottomMargin = 10;
-    const int padding = metrics.contentSidePadding;
-    const int menuY = pageHeight - (menuRowHeight * 2) - menuGap - metrics.buttonHintsHeight - bottomMargin;
-
-    auto drawCustomMenuBtn = [&](int index, const char* label, int x, int y, int w, int h) {
-      bool isSelected = (!carouselFocused && menuSelectedTileIndex == index);
-      if (isSelected) {
-        renderer.fillRect(x, y, w, h);
-      } else {
-        renderer.drawRect(x, y, w, h);
-      }
-      int textWidth = renderer.getTextWidth(UI_10_FONT_ID, label);
-      int textHeight = renderer.getLineHeight(UI_10_FONT_ID);
-      renderer.drawText(UI_10_FONT_ID, x + (w - textWidth) / 2, y + (h - textHeight) / 2, label, !isSelected);
-    };
-
-    int width0 = (pageWidth / 2) - padding - (menuGap / 2);
-    drawCustomMenuBtn(0, tr(STR_BROWSE_FILES), padding, menuY, width0, menuRowHeight);
-
-    int startX1 = (pageWidth / 2) + (menuGap / 2);
-    int width1 = (pageWidth / 2) - padding - (menuGap / 2);
-    drawCustomMenuBtn(1, tr(STR_APPS), startX1, menuY, width1, menuRowHeight);
-
-    int width2 = pageWidth - (padding * 2);
-    drawCustomMenuBtn(2, tr(STR_SETTINGS_TITLE), padding, menuY + menuRowHeight + menuGap, width2, menuRowHeight);
-
-    const auto labels = carouselFocused ? mappedInput.mapLabels("", tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
-                                        : mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
-  } else {
-    // --- ORIGINAL RENDERING ---
-    GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
-                            recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
-                            std::bind(&HomeActivity::storeCoverBuffer, this));
-
-    // Simple, fix menu for original themes
-    std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_APPS),
-                                          tr(STR_SETTINGS_TITLE)};
-
-    // UIIcon::Library for Apps menu icon
-    std::vector<UIIcon> menuIcons = {Folder, Recent, Library, Settings};
-
-    // bottom 1/3
-    const int bottomMargin = 20;
-    const int menuHeight = (pageHeight / 3) - 15;
-    const int menuY = pageHeight - menuHeight - metrics.buttonHintsHeight - bottomMargin;
-
-    GUI.drawButtonMenu(
-        renderer, Rect{0, menuY, pageWidth, menuHeight}, static_cast<int>(menuItems.size()),
-        selectorIndex - recentBooks.size(), [&menuItems](int index) { return std::string(menuItems[index]); },
-        [&menuIcons](int index) { return menuIcons[index]; });
-
-    const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  if (coverBufferStored && restoreCoverBuffer()) {
+    HomeRenderer::drawSelectionBorder(renderer, focusedItemRect());
+    renderer.displayBuffer();
+    return;
   }
 
-  renderer.displayBuffer();
+  renderFull();
 
   if (!firstRenderDone) {
     firstRenderDone = true;
+    renderer.displayBuffer();
     requestUpdate();
-  } else if (!recentsLoaded && !recentsLoading) {
-    recentsLoading = true;
-    loadRecentCovers(metrics.homeCoverHeight);
+    return;
   }
+
+  if (!recentsLoaded && !recentsLoading) {
+    loadRecentCovers();
+    renderFull();
+  }
+
+  if (recentsLoaded && !heroProgressLoaded && !recentBooks.empty()) {
+    HomeProgressCache::getInstance().loadProgressFor(recentBooks[0].path);
+    heroProgressLoaded = true;
+    renderFull();
+  }
+
+  coverBufferStored = storeCoverBuffer();
+  if (coverBufferStored) {
+    HomeRenderer::drawSelectionBorder(renderer, focusedItemRect());
+  }
+  renderer.displayBuffer();
 }

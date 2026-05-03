@@ -137,7 +137,11 @@ void ReadingStatsManager::beginSession(const char* cacheKey, const char* title, 
     sessionBookIndex = static_cast<uint8_t>(idx);
     strncpy(books[idx].bookPath, bookPath, sizeof(books[idx].bookPath) - 1);
     strncpy(books[idx].thumbBmpPath, thumbBmpPath, sizeof(books[idx].thumbBmpPath) - 1);
-    books[idx].progressPercent = progressPercent;
+    // NOTE: progressPercent is intentionally NOT overwritten here. The value
+    // passed in is byte-weighted at chapter-start (read from progress.bin),
+    // which is less precise than the page-precise value endSession() saves on
+    // exit. Overwriting on every entry would cause the Stats screen to flicker
+    // back to a coarser percentage every time the user opens the book.
   }
 }
 

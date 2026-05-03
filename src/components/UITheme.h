@@ -3,7 +3,7 @@
 #include <functional>
 #include <memory>
 
-#include "CrossPointSettings.h"
+#include "CrossPointSettings.h"  // SETTINGS macro is used transitively by callers
 #include "components/themes/BaseTheme.h"
 
 class UITheme {
@@ -16,8 +16,8 @@ class UITheme {
 
   const ThemeMetrics& getMetrics() const { return *currentMetrics; }
   const BaseTheme& getTheme() const { return *currentTheme; }
+  // No-op kept for callers that wanted to refresh the theme on settings exit.
   void reload();
-  void setTheme(CrossPointSettings::UI_THEME type);
   static int getNumberOfItemsPerPage(const GfxRenderer& renderer, bool hasHeader, bool hasTabBar, bool hasButtonHints,
                                      bool hasSubtitle);
   static std::string getCoverThumbPath(std::string coverBmpPath, int coverHeight);

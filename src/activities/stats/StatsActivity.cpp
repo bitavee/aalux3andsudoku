@@ -1,11 +1,15 @@
 #include "activities/stats/StatsActivity.h"
 
 #include <Bitmap.h>
+#include <Epub.h>
+#include <FsHelpers.h>
 #include <HalStorage.h>
 #include <I18n.h>
 
 #include <algorithm>
+#include <climits>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "DetailedStatsActivity.h"  // detailedStatistics
@@ -67,7 +71,61 @@ uint8_t StatsActivity::getVisibleBookCount() const {
 void StatsActivity::onEnter() {
   Activity::onEnter();
   selectedBookIndex = 0;
+  // Stats can outlive thumb files (Clear Cache, file moves, books opened on a
+  // firmware version that didn't pre-generate thumbs). Regenerate any missing
+  // covers up front so every row has artwork to render.
+  prepareMissingCovers();
   activityManager.requestUpdateAndWait();
+}
+
+void StatsActivity::prepareMissingCovers() {
+  static constexpr int kRegenHeight = 156;  // matches EpubReaderActivity::onEnter pre-gen
+  static const int kCandidates[] = {150, 156, 226, 234, 300, 340, 400};
+
+  const uint8_t total = StatsManager.getBookCount();
+  if (total == 0) return;
+
+  bool popupShown = false;
+  Rect popupRect;
+
+  for (uint8_t i = 0; i < total; ++i) {
+    const BookStatEntry& book = StatsManager.getBook(i);
+    if (book.thumbBmpPath[0] == '\0') continue;
+    if (book.bookPath[0] == '\0') continue;
+
+    // Skip when any preferred-size thumb already exists on disk.
+    bool hasAny = false;
+    for (int res : kCandidates) {
+      const std::string p = UITheme::getCoverThumbPath(std::string(book.thumbBmpPath), res);
+      if (Storage.exists(p.c_str())) {
+        hasAny = true;
+        break;
+      }
+    }
+    if (hasAny) continue;
+
+    // The book file itself may have moved/been deleted - skip silently.
+    if (!Storage.exists(book.bookPath)) continue;
+
+    // Only EPUB regen is wired up right now. TXT/XTC entries fall through to
+    // the placeholder + title fallback in the row renderer.
+    if (!FsHelpers::hasEpubExtension(std::string(book.bookPath))) continue;
+
+    if (!popupShown) {
+      popupShown = true;
+      popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+    }
+    GUI.fillPopupProgress(renderer, popupRect, 10 + (i * 90) / std::max<uint8_t>(total, 1));
+
+    Epub epub(std::string(book.bookPath), "/.crosspoint");
+    if (!epub.load(false, true)) {
+      LOG_DBG("STATS", "Could not load EPUB for cover regen: %s", book.bookPath);
+      continue;
+    }
+    if (!epub.generateThumbBmp(kRegenHeight)) {
+      LOG_DBG("STATS", "Cover regen failed (no embedded image?) for %s", book.bookPath);
+    }
+  }
 }
 
 void StatsActivity::onExit() { Activity::onExit(); }
@@ -288,9 +346,11 @@ void StatsActivity::renderBookRow(int rowX, int rowY, int rowW, int rowH, const 
   const int coverX = rowX + COVER_PAD;
   const int coverY = rowY + COVER_PAD;
 
-  // Attempt to draw the generated cover; fallback to placeholder image if missing
+  // Attempt to draw the generated cover; fallback to a title placeholder if
+  // the book has no thumbnail at all (no embedded cover image, generation
+  // failed, or the cache was cleared).
   if (!loadAndDrawCover(coverX, coverY, coverW, coverH, book)) {
-    drawCoverPlaceholder(coverX, coverY, coverW, coverH);
+    drawCoverPlaceholder(coverX, coverY, coverW, coverH, book.title);
   }
 
   const int textX = coverX + coverW + pad + 10;
@@ -358,8 +418,10 @@ void StatsActivity::renderBookRow(int rowX, int rowY, int rowW, int rowH, const 
 /**
  * @brief Draws a fallback placeholder when a book cover is missing.
  */
-void StatsActivity::drawCoverPlaceholder(int x, int y, int w, int h) const {
-  // CRITICAL: Ensure the 'fill' parameter is 'false' so we do not draw a black box over the area.
+void StatsActivity::drawCoverPlaceholder(int x, int y, int w, int h, const char* /*title*/) const {
+  // Empty bordered rect - matches the home screen's behaviour for books with
+  // no embedded cover image. The book title is already visible to the right
+  // of the cover in the row layout, so we don't paint it inside the box.
   renderer.drawRoundedRect(x, y, w, h, 1, 4, false);
 }
 
@@ -374,20 +436,27 @@ bool StatsActivity::loadAndDrawCover(int x, int y, int w, int h, const BookStatE
     return false;
   }
 
+  // Pick the existing thumb whose height is closest to the render target `h`.
+  // Picking the largest available is wrong: thumbs are 1-bit BMPs and
+  // GfxRenderer::drawBitmap1Bit does an OR-downscale, which collapses to solid
+  // black under heavy downsampling. A native or near-native fit avoids that.
+  // Candidates cover both the new home sizes (HomeRenderer::kHeroCoverHeight
+  // and kThumbnailCoverHeight) and legacy sizes from prior firmware (Lyra=226,
+  // Lyra3Covers/Recent6=156, Classic=400, etc.).
+  static const int kCandidates[] = {150, 156, 226, 234, 300, 340, 400};
   std::string thumbPath;
-  bool found = false;
-
-  // The fallback array matches the target resolutions configured in HomeActivity
-  std::vector<int> fallbacks = {156, 234, 226, 340, 400};
-  for (int res : fallbacks) {
-    thumbPath = UITheme::getCoverThumbPath(std::string(book.thumbBmpPath), res);
-    if (Storage.exists(thumbPath.c_str())) {
-      found = true;
-      break;
+  int bestDiff = INT_MAX;
+  for (int res : kCandidates) {
+    std::string candidatePath = UITheme::getCoverThumbPath(std::string(book.thumbBmpPath), res);
+    if (!Storage.exists(candidatePath.c_str())) continue;
+    const int diff = std::abs(res - h);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      thumbPath = std::move(candidatePath);
     }
   }
 
-  if (!found) {
+  if (thumbPath.empty()) {
     LOG_DBG("STATS", "Cover: No suitable resolution found for '%s'", book.thumbBmpPath);
     return false;
   }

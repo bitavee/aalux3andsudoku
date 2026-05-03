@@ -4,7 +4,9 @@
 #include <HalStorage.h>
 #include <I18n.h>
 
+#include <climits>
 #include <cstdio>
+#include <cstdlib>
 
 #include "activities/ActivityManager.h"
 #include "components/UITheme.h"
@@ -60,9 +62,23 @@ void DetailedStatsActivity::renderDetailedGrid() const {
   const int coverX = coverPad;
   const int coverY = coverPad;
 
-  // Using 226px height thumb as it fits perfectly here
-  std::string thumbPath = UITheme::getCoverThumbPath(std::string(book.thumbBmpPath), 226);
-  if (Storage.exists(thumbPath.c_str())) {
+  // Pick the thumb whose height is closest to coverH. 1-bit BMPs OR-downscale,
+  // so picking a much larger thumb collapses to a black blob.
+  // See StatsActivity::loadAndDrawCover for the full rationale.
+  static const int kCandidates[] = {150, 156, 226, 234, 300, 340, 400};
+  std::string thumbPath;
+  int bestDiff = INT_MAX;
+  for (int res : kCandidates) {
+    std::string candidatePath = UITheme::getCoverThumbPath(std::string(book.thumbBmpPath), res);
+    if (!Storage.exists(candidatePath.c_str())) continue;
+    const int diff = std::abs(res - coverH);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      thumbPath = std::move(candidatePath);
+    }
+  }
+
+  if (!thumbPath.empty()) {
     FsFile f;
     if (Storage.openFileForRead("STATS", thumbPath.c_str(), f)) {
       Bitmap bmp(f, false);
@@ -72,7 +88,7 @@ void DetailedStatsActivity::renderDetailedGrid() const {
       f.close();
     }
   } else {
-    drawCoverPlaceholder(coverX, coverY, coverW, coverH);
+    drawCoverPlaceholder(coverX, coverY, coverW, coverH, book.title);
   }
 
   // -- 2ND SECTION: Top Right - Book info --
@@ -206,7 +222,10 @@ void DetailedStatsActivity::renderDetailedGrid() const {
   renderer.drawText(UI_10_FONT_ID, 290, botYLabel, "Total time read", true);
 }
 
-void DetailedStatsActivity::drawCoverPlaceholder(int x, int y, int w, int h) const {
+void DetailedStatsActivity::drawCoverPlaceholder(int x, int y, int w, int h, const char* /*title*/) const {
+  // Optional system asset takes precedence; otherwise an empty bordered rect
+  // (matches the home screen's no-cover behaviour). Title is rendered next to
+  // the cover by the caller, so we don't overlay it inside the box.
   static constexpr const char* PLACEHOLDER_PATH = "/.crosspoint/system/BasicCover.bmp";
   if (Storage.exists(PLACEHOLDER_PATH)) {
     FsFile f;
