@@ -7,7 +7,7 @@ class GfxRenderer;
 struct RecentBook;
 struct Rect;
 
-// Rendering primitives for the seek-reader portrait home screen.
+// Rendering primitives for the aalu portrait home screen.
 //
 // Layout (portrait 480x800):
 //   * Hero block       : top, full width. Cover left, metadata right (title,

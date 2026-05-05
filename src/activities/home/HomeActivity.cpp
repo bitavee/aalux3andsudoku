@@ -303,6 +303,18 @@ void HomeActivity::buildTiles() {
     }
   }
 
+  // Pin each stack's cover to the first book in series order so the home
+  // tile and the drill-in viewer agree on which member fronts the group.
+  // Without this, bookIndices[0] inherits from recents order, which makes
+  // the cover whichever member was opened most recently. Skip tile 0 (hero
+  // alone, single index) and any tile already sorted (hero series tile).
+  for (size_t t = 1; t < tiles.size(); ++t) {
+    HomeTile& tile = tiles[t];
+    if (tile.bookIndices.size() < 2) continue;
+    std::sort(tile.bookIndices.begin(), tile.bookIndices.end(),
+              [&](int a, int b) { return orderKey(recentBooks[a]) < orderKey(recentBooks[b]); });
+  }
+
   // Apply the persistent series-count cache to any tile that's a stack.
   // The cache is populated by SeriesViewerActivity discovery; until the user
   // has opened the viewer at least once, the badge falls back to the

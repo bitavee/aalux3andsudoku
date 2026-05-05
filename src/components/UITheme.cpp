@@ -22,7 +22,7 @@ UITheme::UITheme() {
   currentMetrics = &LyraMetrics::values;
 }
 
-// The seek-reader UI overhaul collapsed the four legacy themes (Classic, Lyra,
+// The aalu UI overhaul collapsed the four legacy themes (Classic, Lyra,
 // Lyra3Covers, Recent6) into a single Lyra-based theme. reload() stays as a
 // no-op so existing callers (e.g. SettingsActivity::onExit) remain valid - if
 // theme switching ever returns, this is the hook to wire it back up.

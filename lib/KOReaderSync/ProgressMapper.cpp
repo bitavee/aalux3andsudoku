@@ -45,7 +45,7 @@ CrossPointPosition ProgressMapper::toCrossPoint(const std::shared_ptr<Epub>& epu
   bool spineFound = false;
   int parsedSpineIndex = -1;
   if (sscanf(koPos.xpath.c_str(), "/body/DocFragment[%d]", &parsedSpineIndex) == 1) {
-    parsedSpineIndex -= 1;  // KOReader XPath is 1-based, SEEK is 0-based
+    parsedSpineIndex -= 1;  // KOReader XPath is 1-based, AALU is 0-based
     if (parsedSpineIndex >= 0 && parsedSpineIndex < epub->getSpineItemsCount()) {
       result.spineIndex = parsedSpineIndex;
       spineFound = true;
@@ -97,7 +97,7 @@ CrossPointPosition ProgressMapper::toCrossPoint(const std::shared_ptr<Epub>& epu
 
     if (estimatedTotalPages > 0) {
       // HEURISTIC: Avoid using global percentage for intra-chapter progress because
-      // byte-counting differs wildly between KOReader and SEEK.
+      // byte-counting differs wildly between KOReader and AALU.
       // Instead, extract the last DOM node index from the XPath (e.g., the '5' in '/p[5]').
       int lastNodeIndex = 1;
       size_t lastBracket = koPos.xpath.find_last_of('[');

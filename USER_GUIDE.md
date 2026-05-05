@@ -1,8 +1,8 @@
-# SEEK User Guide
+# AALU User Guide
 
-Welcome to the **SEEK** firmware. This guide outlines the hardware controls, navigation, and reading features of the device.
+Welcome to the **AALU** firmware. This guide outlines the hardware controls, navigation, and reading features of the device.
 
-- [SEEK User Guide](#seek-user-guide)
+- [AALU User Guide](#aalu-user-guide)
   - [1. Hardware Overview](#1-hardware-overview)
     - [Button Layout](#button-layout)
   - [2. Power & Startup](#2-power--startup)
@@ -103,7 +103,7 @@ See the [webserver docs](./docs/webserver.md) for more information on how to con
 
 ### 3.5.1 Calibre Wireless Transfers
 
-SEEK supports sending books from Calibre utilizing the legacy CrossPoint Reader device plugin.
+AALU supports sending books from Calibre utilizing the legacy CrossPoint Reader device plugin.
 
 1. Install the plugin in Calibre:
    - Head to https://github.com/crosspoint-reader/calibre-plugins/releases to download the latest version of the `crosspoint_reader` plugin.
@@ -120,7 +120,7 @@ The Settings screen allows you to configure the device's behavior. There are a f
 #### 3.6.1 Display
 
 - **Sleep Screen**: Which sleep screen to display when the device sleeps:
-  - "Dark" (default) - The default dark SEEK logo sleep screen
+  - "Dark" (default) - The default dark AALU logo sleep screen
   - "Light" - The same default sleep screen, on a white background
   - "Custom" - Custom images from the SD card; see [Sleep Screen](#37-sleep-screen) below for more information
   - "Cover" - The book cover image
@@ -197,12 +197,12 @@ The Settings screen allows you to configure the device's behavior. There are a f
 - **KOReader Sync**: Options for setting up KOReader for syncing book progress.
 - **OPDS Browser**: Configure OPDS server settings for browsing and downloading books. Set the server URL. Note: Only HTTP Basic authentication is supported.
 - **Clear Reading Cache**: Clear the internal SD card cache.
-- **Check for updates**: Check for SEEK firmware updates over WiFi.
+- **Check for updates**: Check for AALU firmware updates over WiFi.
 - **Language**: Set the system language (see **[Supported Languages](#supported-languages)** for more information).
 
 #### 3.6.5 KOReader Sync Quick Setup
 
-SEEK can sync reading progress with KOReader-compatible sync servers.
+AALU can sync reading progress with KOReader-compatible sync servers.
 It also interoperates with KOReader apps/devices when they use the same server and credentials.
 
 ##### Option A: Free Public Server (`sync.koreader.rocks`)
@@ -221,11 +221,11 @@ curl -i "[https://sync.koreader.rocks/users/create](https://sync.koreader.rocks/
 ```
   Already have KOReader Sync credentials? Skip registration; basic sync only requires using the same existing username/password on all devices.
 
-2. On each SEEK device:
+2. On each AALU device:
     
     - Go to **Settings -> System -> KOReader Sync**.
         
-    - Set **Username** and **Password** (enter the plain password; SEEK computes MD5 internally, and use the same values on all devices).
+    - Set **Username** and **Password** (enter the plain password; AALU computes MD5 internally, and use the same values on all devices).
         
     - Set **Sync Server URL** to `https://sync.koreader.rocks`, or leave it empty.
         
@@ -244,8 +244,8 @@ The **Sleep Screen** setting controls what is displayed when the device goes to 
 
 |**Mode**|**Behavior**|
 |---|---|
-|**Dark** (default)|The SEEK logo on a dark background.|
-|**Light**|The SEEK logo on a white background.|
+|**Dark** (default)|The AALU logo on a dark background.|
+|**Light**|The AALU logo on a white background.|
 |**Custom**|A custom image from the SD card (see below). Falls back to **Dark** if no custom image is found.|
 |**Cover**|The cover of the currently open book. Falls back to **Dark** if no book is open.|
 |**Cover + Custom**|The cover of the currently open book. Falls back to **Custom** behavior if no book is open.|
@@ -316,7 +316,7 @@ This feature can be disabled in the **[Controls Settings](https://www.google.com
 
 ### Quick Settings (Aa) Overlay
 
-Instead of exiting the book to change display settings, SEEK provides a fast, in-reader overlay. 
+Instead of exiting the book to change display settings, AALU provides a fast, in-reader overlay. 
 
 - **Open Quick Settings:** While reading, press **Confirm** to open the reader menu, then select **Quick Settings**.
 - **Switch Tabs:** Use the **Left** or **Right** buttons to switch between the *Reader* and *Controls* tabs.
@@ -326,7 +326,7 @@ Instead of exiting the book to change display settings, SEEK provides a fast, in
 
 ### Offline Dictionary & Lookup History
 
-SEEK supports offline dictionary lookups directly while reading. To use this feature, you must place standard StarDict dictionary files (`dictionary.dict` and `dictionary.idx`) in the root directory of your SD card. 
+AALU supports offline dictionary lookups directly while reading. To use this feature, you must place standard StarDict dictionary files (`dictionary.dict` and `dictionary.idx`) in the root directory of your SD card. 
 
 📥 **[Dictionary Files are available in the repository here](./English-Dictionary)**
 
@@ -336,7 +336,7 @@ SEEK supports offline dictionary lookups directly while reading. To use this fea
 
 ### Supported Languages
 
-SEEK renders text using the following Unicode character blocks, enabling support for a wide range of languages:
+AALU renders text using the following Unicode character blocks, enabling support for a wide range of languages:
 
 - **Latin Script (Basic, Supplement, Extended-A):** Covers English, German, French, Spanish, Portuguese, Italian, Dutch, Swedish, Norwegian, Danish, Finnish, Polish, Czech, Hungarian, Romanian, Slovak, Slovenian, Turkish, and others.
     
@@ -373,7 +373,7 @@ Please note that this firmware is currently in active development. The following
 
 ## 7. Troubleshooting Issues & Escaping Bootloop
 
-If an issue or crash is encountered while using SEEK, feel free to raise an issue ticket and attach the serial monitor logs. The logs can be obtained by connecting the device to a computer and starting a serial monitor.
+If an issue or crash is encountered while using AALU, feel free to raise an issue ticket and attach the serial monitor logs. The logs can be obtained by connecting the device to a computer and starting a serial monitor.
 
 ```
 pio device monitor

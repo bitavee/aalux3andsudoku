@@ -8,7 +8,7 @@
 #include "esp_wifi.h"
 
 namespace {
-constexpr char latestReleaseUrl[] = "https://api.github.com/repos/sumegig/seek-reader/releases/latest";
+constexpr char latestReleaseUrl[] = "https://api.github.com/repos/dawsonfi/aalu/releases/latest";
 
 /* This is buffer and size holder to keep upcoming data from latestReleaseUrl */
 char* local_buf;
@@ -24,7 +24,7 @@ extern esp_err_t esp_crt_bundle_attach(void* conf);
 }
 
 esp_err_t http_client_set_header_cb(esp_http_client_handle_t http_client) {
-  return esp_http_client_set_header(http_client, "User-Agent", "SEEK-ESP32-" SEEKREADER_VERSION);
+  return esp_http_client_set_header(http_client, "User-Agent", "AALU-ESP32-" AALU_VERSION);
 }
 
 esp_err_t event_handler(esp_http_client_event_t* event) {
@@ -93,7 +93,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
     return INTERNAL_UPDATE_ERROR;
   }
 
-  esp_err = esp_http_client_set_header(client_handle, "User-Agent", "SEEK-ESP32-" SEEKREADER_VERSION);
+  esp_err = esp_http_client_set_header(client_handle, "User-Agent", "AALU-ESP32-" AALU_VERSION);
   if (esp_err != ESP_OK) {
     LOG_ERR("OTA", "esp_http_client_set_header Failed : %s", esp_err_to_name(esp_err));
     esp_http_client_cleanup(client_handle);
@@ -156,14 +156,14 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
 }
 
 bool OtaUpdater::isUpdateNewer() const {
-  if (!updateAvailable || latestVersion.empty() || latestVersion == SEEKREADER_VERSION) {
+  if (!updateAvailable || latestVersion.empty() || latestVersion == AALU_VERSION) {
     return false;
   }
 
   int currentMajor, currentMinor, currentPatch;
   int latestMajor, latestMinor, latestPatch;
 
-  const auto currentVersion = SEEKREADER_VERSION;
+  const auto currentVersion = AALU_VERSION;
 
   // semantic version check (only match on 3 segments)
   sscanf(latestVersion.c_str(), "%d.%d.%d", &latestMajor, &latestMinor, &latestPatch);

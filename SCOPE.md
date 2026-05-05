@@ -1,4 +1,4 @@
-# Project Vision & Scope: SEEK Reader
+# Project Vision & Scope: AALU
 
 The goal of CrossPoint Reader is to create an efficient, open-source reading experience for the Xteink X4. We believe a
 dedicated e-reader should do one thing exceptionally well: **facilitate focused reading.**

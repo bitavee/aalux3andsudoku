@@ -1,12 +1,12 @@
-# SEEK Reader Development Guide
+# AALU Development Guide
 
 Project: Open-source e-reader firmware for the **Xteink X4** (ESP32-C3).
 Origin: Originally forked from [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader); now an independent system with its own UI, Dictionary engine, KOReader sync, and Reading Stats.
 Mission: Provide a lightweight, high-performance, *personalized* reading experience focused on EPUB rendering on constrained hardware.
-Repo root: `/Users/disrael/Projects/personal/xteink/seek-reader`
-Current firmware version: see `[seek-reader] version` in `platformio.ini` (currently `1.0.7`).
+Repo root: `/Users/disrael/Projects/personal/xteink/aalu`
+Current firmware version: see `[aalu] version` in `platformio.ini` (currently `1.0.7`).
 
-> Note: Many code-level identifiers (e.g. `CrossPointSettings`, `CrossPointState`, the `.crosspoint/` cache directory) intentionally retain the upstream names for backward compatibility with existing on-device caches. **Do not rename them** unless you also ship a binary migration path (see `stats.bin` migration in [Stats refactor](#seek-specific-features)).
+> Note: Many code-level identifiers (e.g. `CrossPointSettings`, `CrossPointState`, the `.crosspoint/` cache directory) intentionally retain the upstream names for backward compatibility with existing on-device caches. **Do not rename them** unless you also ship a binary migration path (see `stats.bin` migration in [Stats refactor](#aalu-specific-features)).
 
 ---
 
@@ -63,7 +63,7 @@ find src lib -name "*.cpp" -o -name "*.h" | xargs clang-format -i
 5. **UI Strings**: All user-facing text must use the `tr()` macro (e.g. `tr(STR_LOADING)`) for i18n. **Never hardcode UI strings.** Logging messages (`LOG_DBG`/`LOG_ERR`) may be hardcoded.
 6. **`constexpr` First**: Compile-time constants and lookup tables must be `constexpr`, not just `static const`. Moves computation to compile time, enables dead-branch elimination, guarantees flash placement.
 7. **`std::vector` Pre-allocation**: Always call `.reserve(N)` before any `push_back()` loop. Each growth event = alloc-new + copy + free-old → three heap ops that fragment DRAM. Estimate conservatively when the final size is unknown.
-8. **SPIFFS / SD Write Throttling**: Never write a settings file on every user interaction. Guard with a value-change check (`if (newVal == _current) return;`). Progress saves during reading must be debounced — write on activity exit or every N page turns, not every turn. Flash sectors have a finite erase-cycle limit. SEEK's Quick Settings (Aa) overlay is built on this principle: "deferred SD card writes to protect flash lifespan".
+8. **SPIFFS / SD Write Throttling**: Never write a settings file on every user interaction. Guard with a value-change check (`if (newVal == _current) return;`). Progress saves during reading must be debounced — write on activity exit or every N page turns, not every turn. Flash sectors have a finite erase-cycle limit. AALU's Quick Settings (Aa) overlay is built on this principle: "deferred SD card writes to protect flash lifespan".
 
 ---
 
@@ -104,7 +104,7 @@ These flags fundamentally shape firmware behaviour. Do not change them lightly.
 -DXML_GE=0                            // Disable XML general entities (security)
 -DUSE_UTF8_LONG_NAMES=1               // SD card long-filename support
 -DPNG_MAX_BUFFERED_PIXELS=16416       // Allow up to 2048px-wide PNG scanlines
--DSEEKREADER_VERSION=\"1.0.7\"        // Set from [seek-reader] version
+-DAALU_VERSION=\"1.0.7\"        // Set from [aalu] version
 -fno-exceptions                       // No C++ exceptions
 -std=gnu++2a                          // C++20
 ```
@@ -124,7 +124,7 @@ These flags fundamentally shape firmware behaviour. Do not change them lightly.
 
 ### Directory Structure
 ```
-seek-reader/
+aalu/
 ├── src/
 │   ├── main.cpp                       # Entry point + global font init
 │   ├── CrossPointSettings.h           # User settings (kept original name)
@@ -180,9 +180,9 @@ if (Storage.openFileForRead("MODULE", "/path/to/file.bin", file)) {
 
 ---
 
-## SEEK-Specific Features
+## AALU-Specific Features
 
-These are SEEK's additions on top of the inherited CrossPoint engine. When working in these areas, follow the existing patterns rather than introducing new abstractions.
+These are AALU's additions on top of the inherited CrossPoint engine. When working in these areas, follow the existing patterns rather than introducing new abstractions.
 
 * **Custom UI Themes & Layouts** (`src/activities/home/`, `lib/UITheme/`):
   * Multiple home themes: Classic, Lyra, Recent6 Grid (3×2, memory-safe).
@@ -351,7 +351,7 @@ Physical button positions are fixed; logical functions change with user settings
 **Rule**: Always use `MappedInputManager::Button::*` enums, never raw `HalGPIO::BTN_*` indices (except in `ButtonRemapActivity`).
 
 ### UITheme (the `GUI` macro)
-All UI rendering must go through the `GUI` macro (UITheme). Do not hardcode fonts, colours, or positioning — this is what keeps SEEK's themes (Classic, Lyra, Recent6) working consistently across orientations.
+All UI rendering must go through the `GUI` macro (UITheme). Do not hardcode fonts, colours, or positioning — this is what keeps AALU's themes (Classic, Lyra, Recent6) working consistently across orientations.
 
 ---
 
@@ -606,7 +606,7 @@ Rules:
 │   └── sections/
 │       ├── 0.bin
 │       └── ...
-├── stats.bin            # Global + per-book reading statistics (SEEK v2.5)
+├── stats.bin            # Global + per-book reading statistics (AALU v2.5)
 └── system/
     └── BasicCover.bmp   # Fallback for missing covers
 ```
@@ -644,7 +644,7 @@ Source: `lib/Epub/Epub/Section.cpp`, `lib/Epub/Epub/BookMetadataCache.cpp`, plus
 Approximate current versions (verify against the source before changing):
 - `book.bin`: v5
 - `section.bin`: v12
-- `stats.bin`: v6 (with v4/v5 → v6 migration engine — SEEK addition)
+- `stats.bin`: v6 (with v4/v5 → v6 migration engine — AALU addition)
 
 Rules:
 1. ALWAYS bump the version constant BEFORE changing on-disk layout.
@@ -661,7 +661,7 @@ static constexpr uint8_t SECTION_FILE_VERSION = 13;  // was 12
 ## Git Workflow
 
 ### Repository Detection
-**ALWAYS verify repo context before git operations.** SEEK is typically a fork — `origin` is your fork, `upstream` is the SEEK repo.
+**ALWAYS verify repo context before git operations.** AALU is typically a fork — `origin` is your fork, `upstream` is the AALU repo.
 
 ```bash
 git branch --show-current
@@ -756,7 +756,7 @@ If `pio run` warns or errors, fix it — do not paper over warnings. If a host t
 7. 🔲 **Orientations**: verify all four (Portrait, Inverted, Landscape CW, CCW)
 8. 🔲 **Heap**: `ESP.getFreeHeap()` > 50 KB; no leaks across activity transitions
 9. 🔲 **Cache**: if EPUB code changed, delete `.crosspoint/` and verify clean re-parse
-10. 🔲 **SEEK-specific flows**: Quick Settings (Aa) overlay, Dictionary lookup, KOReader sync, Stats v2.5 dashboard
+10. 🔲 **AALU-specific flows**: Quick Settings (Aa) overlay, Dictionary lookup, KOReader sync, Stats v2.5 dashboard
 
 ### CI/CD
 GitHub Actions (`.github/workflows/`):
@@ -793,4 +793,4 @@ logSerial.flush();   // force output before suspected crash
 
 ---
 
-Philosophy: **We are building a dedicated e-reader, not a Swiss Army knife.** If a feature adds RAM pressure without significantly improving the reading experience, it is Out of Scope. SEEK's added features (Dictionary, KOReader sync, Stats v2.5, Quick Settings overlay) all earn their RAM cost — anything new should clear the same bar.
+Philosophy: **We are building a dedicated e-reader, not a Swiss Army knife.** If a feature adds RAM pressure without significantly improving the reading experience, it is Out of Scope. AALU's added features (Dictionary, KOReader sync, Stats v2.5, Quick Settings overlay) all earn their RAM cost — anything new should clear the same bar.

@@ -1,13 +1,13 @@
 
-# SEEK Reader
+# AALU
 
 ## Motivation
 
 E-paper devices are fantastic for reading, but most commercially available readers are closed systems with limited customization. The **Xteink X4** is an affordable, ESP32-C3 based e-paper device, but its official firmware remains closed.
 
-**SEEK** is a custom, open-source firmware for the Xteink X4. It originally started as a fork of the excellent [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) project but has since evolved into an independent system. 
+**AALU** is a custom, open-source firmware for the Xteink X4. It originally started as a fork of the excellent [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) project but has since evolved into an independent system. 
 
-My primary goal with SEEK is to build a highly customizable, personalized reading experience tailored exactly to my own reading habits and needs. I am continuously tweaking the UI, adding new features, and shaping it into my perfect e-reader. However, if you like the direction this project is heading, you are more than welcome to flash it to your device, use it, or contribute!
+My primary goal with AALU is to build a highly customizable, personalized reading experience tailored exactly to my own reading habits and needs. I am continuously tweaking the UI, adding new features, and shaping it into my perfect e-reader. However, if you like the direction this project is heading, you are more than welcome to flash it to your device, use it, or contribute!
 
 *This project is **not affiliated with Xteink**; it's built independently as a personal/community project.*
 
@@ -19,7 +19,7 @@ My primary goal with SEEK is to build a highly customizable, personalized readin
 * WiFi OTA (Over-The-Air) updates and Book upload.
 * Multi-language support.
 
-**SEEK Customizations & Features (My Additions):**
+**AALU Customizations & Features (My Additions):**
 * **Custom UI & Layouts:** Multiple dynamic UI themes, including a memory-safe **3x2 Recent6 Grid layout**, an asymmetrical bottom menu, and cascading cover resolution fallbacks to prevent E-ink ghosting.
 * **Apps Submenu:** A centralized, easily navigable hub for utility applications (File Transfer, Stats, OPDS) keeping the Home screen clean.
 * **Overhauled KOReader Sync:** Custom asymmetrical, heuristic paragraph-level synchronization that fixes chapter drift and prevents remote device XML parser crashes.
@@ -55,7 +55,7 @@ See the [USER_GUIDE.md](./USER_GUIDE.md) for basic operating instructions.
 
 ## Installing (Manual / Development)
 
-Since SEEK is an actively developed custom firmware, the primary way to install it is by compiling and flashing it yourself via USB-C.
+Since AALU is an actively developed custom firmware, the primary way to install it is by compiling and flashing it yourself via USB-C.
 
 ### Prerequisites
 
@@ -69,7 +69,7 @@ Since SEEK is an actively developed custom firmware, the primary way to install 
 Clone the repository and its submodules:
 
 ```sh
-git clone --recursive [https://github.com/sumegig/seek-reader](https://github.com/sumegig/seek-reader)
+git clone --recursive [https://github.com/dawsonfi/aalu](https://github.com/dawsonfi/aalu)
 
 # Or, if you've already cloned without --recursive:
 git submodule update --init --recursive
@@ -109,7 +109,7 @@ python3 scripts/debugging_monitor.py /dev/cu.usbmodem2101
 
 ## Internals & RAM Constraints
 
-SEEK (like CrossPoint) is very aggressive about caching data to the SD card to minimize RAM usage. The ESP32-C3 only has **~380KB of usable RAM**, and the E-ink display buffer alone takes up a significant chunk of that.
+AALU (like CrossPoint) is very aggressive about caching data to the SD card to minimize RAM usage. The ESP32-C3 only has **~380KB of usable RAM**, and the E-ink display buffer alone takes up a significant chunk of that.
 
 ### Data caching
 
@@ -139,7 +139,7 @@ For more details on the internal file structures, see the [file formats document
 
 ## Contributing
 
-While SEEK is heavily tailored to my personal use, contributions are very welcome! If you find a bug, want to improve the E-ink rendering, or have an idea that fits the scope of a lightweight reader, feel free to join in.
+While AALU is heavily tailored to my personal use, contributions are very welcome! If you find a bug, want to improve the E-ink rendering, or have an idea that fits the scope of a lightweight reader, feel free to join in.
 
 ### To submit a contribution:
 
