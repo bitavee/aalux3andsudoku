@@ -111,12 +111,6 @@ void EpubReaderActivity::onEnter() {
     epub->generateThumbBmp(HomeRenderer::kThumbnailCoverHeight);
   }
 
-  // Generate thumbnail exactly for Stats cover display to avoid pixelation
-  constexpr int STATS_THUMB_HEIGHT = 156;
-  if (!Storage.exists(epub->getThumbBmpPath(STATS_THUMB_HEIGHT).c_str())) {
-    epub->generateThumbBmp(STATS_THUMB_HEIGHT);
-  }
-
   StatsManager.beginSession(epub->getCachePath().c_str(), epub->getTitle().c_str(),
                             epub->getAuthor().c_str(),  // new
                             epub->getPath().c_str(), epub->getThumbBmpPath().c_str(),

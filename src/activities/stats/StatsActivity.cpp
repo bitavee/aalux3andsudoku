@@ -7,7 +7,6 @@
 #include <I18n.h>
 
 #include <algorithm>
-#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -15,12 +14,22 @@
 #include "DetailedStatsActivity.h"  // detailedStatistics
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "components/HomeRenderer.h"  // kThumbnailCoverHeight — shared with home/groups so all three pages read the same on-disk thumb
 #include "components/UITheme.h"
 #include "components/themes/BaseTheme.h"
 #include "fontIds.h"
 #include "stats/ReadingStatsManager.h"
 
 static constexpr int COVER_PAD = 6;
+
+// A book qualifies for the stats list only if the user has actually engaged
+// with it. Books at 0% AND with 0 reading time are typically stale entries
+// (added to the cache but never opened past the cover, or imported from a
+// path that pre-populated metadata). They clutter the list with no useful
+// signal.
+static bool isStatsVisible(const BookStatEntry& book) {
+  return book.progressPercent > 0 && book.totalReadingMs > 0;
+}
 
 // -----------------------------------------------------------------------
 // Static helpers
@@ -51,15 +60,15 @@ void StatsActivity::formatDuration(char* buf, size_t bufLen, uint32_t ms) {
  * @brief Returns the number of books that have not yet reached 100% completion.
  * Completed books are filtered out from the active statistics list.
  */
-// Updated to filter based on the current view mode
+// Counts books in the current view mode (Reading vs Finished). Hidden books
+// (0% progress or 0 reading time) are excluded — see isStatsVisible.
 uint8_t StatsActivity::getVisibleBookCount() const {
   uint8_t count = 0;
   for (uint8_t i = 0; i < StatsManager.getBookCount(); ++i) {
-    const bool isDone = (StatsManager.getBook(i).progressPercent >= 95);
-    // Csak akkor számoljuk, ha megegyezik az aktuális nézettel
-    if (isDone == showingFinished) {
-      count++;
-    }
+    const BookStatEntry& book = StatsManager.getBook(i);
+    if (!isStatsVisible(book)) continue;
+    const bool isDone = (book.progressPercent >= 95);
+    if (isDone == showingFinished) count++;
   }
   return count;
 }
@@ -79,8 +88,13 @@ void StatsActivity::onEnter() {
 }
 
 void StatsActivity::prepareMissingCovers() {
-  static constexpr int kRegenHeight = 156;  // matches EpubReaderActivity::onEnter pre-gen
-  static const int kCandidates[] = {150, 156, 170, 226, 234, 300, 340, 400};
+  // Stats reads thumbnails at the same resolution the home and group pages
+  // use (kThumbnailCoverHeight), so the on-disk cache file is shared across
+  // pages — no duplicate regen, and any cover that renders on home will
+  // render here. Targeting one canonical size also means the renderer can
+  // call drawBitmapStretched1Bit with a known source aspect, fixing the old
+  // white-margin bug that came from drawBitmap's aspect-fit fallback.
+  static constexpr int kRegenHeight = HomeRenderer::kThumbnailCoverHeight;
 
   const uint8_t total = StatsManager.getBookCount();
   if (total == 0) return;
@@ -90,25 +104,18 @@ void StatsActivity::prepareMissingCovers() {
 
   for (uint8_t i = 0; i < total; ++i) {
     const BookStatEntry& book = StatsManager.getBook(i);
+    if (!isStatsVisible(book)) continue;
     if (book.thumbBmpPath[0] == '\0') continue;
     if (book.bookPath[0] == '\0') continue;
 
-    // Skip when any preferred-size thumb already exists on disk.
-    bool hasAny = false;
-    for (int res : kCandidates) {
-      const std::string p = UITheme::getCoverThumbPath(std::string(book.thumbBmpPath), res);
-      if (Storage.exists(p.c_str())) {
-        hasAny = true;
-        break;
-      }
-    }
-    if (hasAny) continue;
+    const std::string thumbPath = UITheme::getCoverThumbPath(std::string(book.thumbBmpPath), kRegenHeight);
+    if (Storage.exists(thumbPath.c_str())) continue;
 
     // The book file itself may have moved/been deleted - skip silently.
     if (!Storage.exists(book.bookPath)) continue;
 
     // Only EPUB regen is wired up right now. TXT/XTC entries fall through to
-    // the placeholder + title fallback in the row renderer.
+    // the placeholder in the row renderer (matches home/group behaviour).
     if (!FsHelpers::hasEpubExtension(std::string(book.bookPath))) continue;
 
     if (!popupShown) {
@@ -173,13 +180,17 @@ void StatsActivity::loop() {
     }
   }
 
-  // --- UPDATED MEMORY MAPPING LOGIC ---
-  // Must account for the 'showingFinished' flag when finding the book index
+  // Map the visible row index back to the underlying StatsManager index.
+  // The same predicate used by getVisibleBookCount and renderBookPanel must
+  // be applied here, otherwise Open/More target the wrong book once any
+  // entry is hidden.
   uint8_t actualMemoryIndex = 0;
   int currentMatch = 0;
 
   for (uint8_t j = 0; j < StatsManager.getBookCount(); ++j) {
-    const bool isDone = (StatsManager.getBook(j).progressPercent >= 95);
+    const BookStatEntry& book = StatsManager.getBook(j);
+    if (!isStatsVisible(book)) continue;
+    const bool isDone = (book.progressPercent >= 95);
     if (isDone != showingFinished) continue;
 
     if (currentMatch == selectedBookIndex) {
@@ -307,12 +318,13 @@ void StatsActivity::renderBookPanel(int panelY, int panelH, int screenW) const {
     int currentMatch = 0;
 
     for (uint8_t j = 0; j < StatsManager.getBookCount(); ++j) {
-      const bool isDone = (StatsManager.getBook(j).progressPercent >= 95);
-
+      const BookStatEntry& book = StatsManager.getBook(j);
+      if (!isStatsVisible(book)) continue;
+      const bool isDone = (book.progressPercent >= 95);
       if (isDone != showingFinished) continue;
 
       if (currentMatch == visibleIdx) {
-        targetBook = &StatsManager.getBook(j);
+        targetBook = &book;
         break;
       }
       currentMatch++;
@@ -429,40 +441,22 @@ void StatsActivity::drawCoverPlaceholder(int x, int y, int w, int h, const char*
 }
 
 /**
- * @brief Loads and renders the thumbnail generated by EpubReaderActivity.
- * * Includes a cascading fallback mechanism synchronized with the HomeActivity architecture.
- * * @return true if a valid cover was found and successfully rendered.
+ * @brief Loads and renders a book cover, mirroring HomeRenderer::drawCover.
+ *
+ * Uses the same single canonical resolution (kThumbnailCoverHeight) and the
+ * same is1Bit() dispatch as the home page and series-group page, so all three
+ * surfaces read the same on-disk thumb and render it identically. Falls back
+ * to drawCoverPlaceholder on any miss; never renders a degraded cover.
+ *
+ * @return true if a valid cover was found and successfully rendered.
  */
 bool StatsActivity::loadAndDrawCover(int x, int y, int w, int h, const BookStatEntry& book) const {
   if (book.thumbBmpPath[0] == '\0') {
-    LOG_DBG("STATS", "Cover: thumbBmpPath is empty");
     return false;
   }
 
-  // Pick the existing thumb whose height is closest to the render target `h`.
-  // Picking the largest available is wrong: thumbs are 1-bit BMPs and
-  // GfxRenderer::drawBitmap1Bit does an OR-downscale, which collapses to solid
-  // black under heavy downsampling. A native or near-native fit avoids that.
-  // Candidates cover both the new home sizes (HomeRenderer::kHeroCoverHeight
-  // and kThumbnailCoverHeight) and legacy sizes from prior firmware (Lyra=226,
-  // Lyra3Covers/Recent6=156, Classic=400, etc.).
-  static const int kCandidates[] = {150, 156, 170, 226, 234, 300, 340, 400};
-  std::string thumbPath;
-  int bestDiff = INT_MAX;
-  for (int res : kCandidates) {
-    std::string candidatePath = UITheme::getCoverThumbPath(std::string(book.thumbBmpPath), res);
-    if (!Storage.exists(candidatePath.c_str())) continue;
-    const int diff = std::abs(res - h);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      thumbPath = std::move(candidatePath);
-    }
-  }
-
-  if (thumbPath.empty()) {
-    LOG_DBG("STATS", "Cover: No suitable resolution found for '%s'", book.thumbBmpPath);
-    return false;
-  }
+  const std::string thumbPath =
+      UITheme::getCoverThumbPath(std::string(book.thumbBmpPath), HomeRenderer::kThumbnailCoverHeight);
 
   FsFile f;
   if (!Storage.openFileForRead("STATS", thumbPath.c_str(), f)) return false;
@@ -473,12 +467,16 @@ bool StatsActivity::loadAndDrawCover(int x, int y, int w, int h, const BookStatE
     return false;
   }
 
-  // Clear area with white (false) before rendering the image
-  renderer.fillRect(x, y, w, h, false);
-
-  // Fast Path: Direct draw. The scaling artifacts on the E-ink screen are minimized here since
-  // the Stats layout uses aspect fit by default.
-  renderer.drawBitmap(bmp, x, y, w, h);
+  // 1-bit thumbs are stretched non-uniformly to fill the slot exactly, so the
+  // cover never leaves a white margin on the right when its source aspect
+  // ratio doesn't match the row's 3:4 cover slot. Identical dispatch to
+  // HomeRenderer::drawCover.
+  if (bmp.is1Bit()) {
+    renderer.drawBitmapStretched1Bit(bmp, x, y, w, h);
+  } else {
+    renderer.drawBitmap(bmp, x, y, w, h);
+  }
+  renderer.drawRect(x, y, w, h);
 
   f.close();
   return true;

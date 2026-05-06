@@ -4,11 +4,11 @@
 #include <HalStorage.h>
 #include <I18n.h>
 
-#include <climits>
 #include <cstdio>
 #include <cstdlib>
 
 #include "activities/ActivityManager.h"
+#include "components/HomeRenderer.h"  // kThumbnailCoverHeight — shared with stats list, home, groups
 #include "components/UITheme.h"
 #include "components/themes/BaseTheme.h"  // for GUI macro and drawButtonHints
 #include "fontIds.h"
@@ -62,32 +62,27 @@ void DetailedStatsActivity::renderDetailedGrid() const {
   const int coverX = coverPad;
   const int coverY = coverPad;
 
-  // Pick the thumb whose height is closest to coverH. 1-bit BMPs OR-downscale,
-  // so picking a much larger thumb collapses to a black blob.
-  // See StatsActivity::loadAndDrawCover for the full rationale.
-  static const int kCandidates[] = {150, 156, 170, 226, 234, 300, 340, 400};
-  std::string thumbPath;
-  int bestDiff = INT_MAX;
-  for (int res : kCandidates) {
-    std::string candidatePath = UITheme::getCoverThumbPath(std::string(book.thumbBmpPath), res);
-    if (!Storage.exists(candidatePath.c_str())) continue;
-    const int diff = std::abs(res - coverH);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      thumbPath = std::move(candidatePath);
-    }
-  }
-
-  if (!thumbPath.empty()) {
-    FsFile f;
-    if (Storage.openFileForRead("STATS", thumbPath.c_str(), f)) {
-      Bitmap bmp(f, false);
-      if (bmp.parseHeaders() == BmpReaderError::Ok) {
+  // Read the same canonical thumb the home, group, and stats-list pages read,
+  // and dispatch by is1Bit() so 1-bit thumbs fill the slot exactly (no white
+  // right-edge from drawBitmap's aspect-fit). Mirrors HomeRenderer::drawCover.
+  const std::string thumbPath =
+      UITheme::getCoverThumbPath(std::string(book.thumbBmpPath), HomeRenderer::kThumbnailCoverHeight);
+  bool drewCover = false;
+  FsFile f;
+  if (Storage.openFileForRead("STATS", thumbPath.c_str(), f)) {
+    Bitmap bmp(f, false);
+    if (bmp.parseHeaders() == BmpReaderError::Ok) {
+      if (bmp.is1Bit()) {
+        renderer.drawBitmapStretched1Bit(bmp, coverX, coverY, coverW, coverH);
+      } else {
         renderer.drawBitmap(bmp, coverX, coverY, coverW, coverH);
       }
-      f.close();
+      renderer.drawRect(coverX, coverY, coverW, coverH);
+      drewCover = true;
     }
-  } else {
+    f.close();
+  }
+  if (!drewCover) {
     drawCoverPlaceholder(coverX, coverY, coverW, coverH, book.title);
   }
 
