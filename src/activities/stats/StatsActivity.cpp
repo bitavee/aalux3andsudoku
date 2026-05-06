@@ -141,6 +141,17 @@ void StatsActivity::loop() {
     return;
   }
 
+  // Toggle between Reading and Finished lists. Must be handled BEFORE the
+  // empty-list early return — otherwise an empty current list traps the user
+  // (e.g. when Finished has no entries, Right would no-op and the only way
+  // back to Reading is Back -> re-enter Stats).
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+    showingFinished = !showingFinished;
+    selectedBookIndex = 0;
+    requestUpdate();
+    return;
+  }
+
   const uint8_t bookCount = getVisibleBookCount();
   if (bookCount == 0) return;
 
@@ -160,14 +171,6 @@ void StatsActivity::loop() {
       selectedBookIndex++;
       changed = true;
     }
-  }
-
-  // NEW: Toggle between Reading and Finished lists
-  if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-    showingFinished = !showingFinished;
-    selectedBookIndex = 0;  // Reset scroll position on toggle
-    requestUpdate();
-    return;
   }
 
   // --- UPDATED MEMORY MAPPING LOGIC ---
