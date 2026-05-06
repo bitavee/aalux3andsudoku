@@ -74,6 +74,12 @@ class Epub {
 
   size_t getBookSize() const;
   float calculateProgress(int currentSpineIndex, float currentSpineRead) const;
+  // Returns book progress as an integer percent [0..100], using
+  // calculateProgress internally and clamping to 100 when the user has
+  // reached the last page of the last spine item. Use this from any UI/cache
+  // surface that shows "100% read" to avoid the 0-based-page truncation
+  // that otherwise caps at 99% (currentPage = pageCount-1, never N/N=1.0).
+  int progressPercent(int currentSpineIndex, int currentPage, int pageCount) const;
   CssParser* getCssParser() const { return cssParser.get(); }
   int resolveHrefToSpineIndex(const std::string& href) const;
 };

@@ -22,23 +22,35 @@ std::string cachePathFor(const std::string& bookPath) {
   return std::string(kCacheRoot) + "/epub_" + std::to_string(std::hash<std::string>{}(bookPath));
 }
 
-// Reads the spine index from progress.bin. Format (matches EpubReaderActivity::saveProgress):
+// Snapshot of progress.bin contents. Format (matches EpubReaderActivity::saveProgress):
 //   bytes 0..1: spineIndex   (LE uint16)
 //   bytes 2..3: chapterPage  (LE uint16)
 //   bytes 4..5: chapterTotal (LE uint16, optional)
-// Returns -1 on read failure.
-int readSpineIndex(const std::string& cachePath) {
+struct ProgressSnapshot {
+  int spineIndex = -1;
+  int chapterPage = 0;
+  int chapterTotal = 0;
+  bool hasPageInfo = false;
+};
+
+bool readProgress(const std::string& cachePath, ProgressSnapshot& out) {
   FsFile f;
   if (!Storage.openFileForRead("HPC", cachePath + "/progress.bin", f)) {
-    return -1;
+    return false;
   }
   uint8_t data[6];
   const int dataSize = f.read(data, sizeof(data));
   f.close();
   if (dataSize < 4) {
-    return -1;
+    return false;
   }
-  return static_cast<int>(data[0]) | (static_cast<int>(data[1]) << 8);
+  out.spineIndex = static_cast<int>(data[0]) | (static_cast<int>(data[1]) << 8);
+  out.chapterPage = static_cast<int>(data[2]) | (static_cast<int>(data[3]) << 8);
+  if (dataSize >= 6) {
+    out.chapterTotal = static_cast<int>(data[4]) | (static_cast<int>(data[5]) << 8);
+    out.hasPageInfo = (out.chapterTotal > 0);
+  }
+  return true;
 }
 }  // namespace
 
@@ -123,8 +135,8 @@ bool HomeProgressCache::loadProgressFor(const std::string& path) {
   }
 
   const std::string cachePath = cachePathFor(path);
-  const int currentSpineIndex = readSpineIndex(cachePath);
-  if (currentSpineIndex < 0) {
+  ProgressSnapshot snap;
+  if (!readProgress(cachePath, snap)) {
     bool updated = false;
     for (auto& e : entries) {
       if (e.path == path) {
@@ -137,18 +149,38 @@ bool HomeProgressCache::loadProgressFor(const std::string& path) {
     if (!updated) entries.push_back({path, Unknown, -1, true});
     return false;
   }
+  const int currentSpineIndex = snap.spineIndex;
+
+  // Slow path resolves spineCount via book.bin. Cache it lazily so we can
+  // detect end-of-book on the fast path without paying for a parse.
+  auto resolveEndOfBook = [&](int spineCount) {
+    return spineCount > 0 && currentSpineIndex == spineCount - 1 && snap.hasPageInfo &&
+           snap.chapterPage >= snap.chapterTotal - 1;
+  };
 
   // Fast path: persisted entry's spineIndex matches the on-disk progress.bin
-  // -- the cached percent is still valid, no book.bin parsing needed.
+  // -- the cached percent is still valid (no book.bin parsing needed) UNLESS
+  // it's a stale 99% from before the end-of-book clamp shipped, in which
+  // case fall through to the slow path so we recompute and persist 100%.
   for (auto& e : entries) {
     if (e.path == path && e.spineIndex == currentSpineIndex && e.progressPercent != Unknown) {
-      e.tried = true;
-      return true;
+      // If we have page info that says we're at end-of-book and the cache
+      // says < 100, force a recompute via the slow path. Otherwise trust
+      // the cache.
+      if (snap.hasPageInfo && e.progressPercent < 100) {
+        // Defer the spineCount check to the slow path, which already loads
+        // book.bin and can resolve spineCount cheaply.
+      } else {
+        e.tried = true;
+        return true;
+      }
+      break;
     }
   }
 
-  // Slow path: spineIndex changed (or no cached entry yet). Parse book.bin
-  // to compute the byte-weighted percent, then persist for the next entry.
+  // Slow path: spineIndex changed (or no cached entry yet, or cache was
+  // stale at end-of-book). Parse book.bin to compute the byte-weighted
+  // percent, then persist for the next entry.
   BookMetadataCache cache(cachePath);
   if (!cache.load()) {
     LOG_DBG("HPC", "BookMetadataCache load failed for %s", path.c_str());
@@ -179,9 +211,16 @@ bool HomeProgressCache::loadProgressFor(const std::string& path) {
   }
   const size_t prevChapterSize = (currentSpineIndex >= 1) ? cache.getSpineEntry(currentSpineIndex - 1).cumulativeSize : 0;
 
-  int percent = static_cast<int>((prevChapterSize * 100) / bookSize);
-  if (percent < 0) percent = 0;
-  if (percent > 100) percent = 100;
+  int percent;
+  if (resolveEndOfBook(spineCount)) {
+    // Last page of last chapter: clamp to 100. Mirrors Epub::progressPercent
+    // so home, status bar, and stats all agree on "finished" books.
+    percent = 100;
+  } else {
+    percent = static_cast<int>((prevChapterSize * 100) / bookSize);
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+  }
 
   bool updated = false;
   for (auto& e : entries) {

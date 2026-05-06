@@ -111,19 +111,19 @@ void EpubReaderActivity::onEnter() {
     epub->generateThumbBmp(HomeRenderer::kThumbnailCoverHeight);
   }
 
-  StatsManager.beginSession(epub->getCachePath().c_str(), epub->getTitle().c_str(),
-                            epub->getAuthor().c_str(),  // new
-                            epub->getPath().c_str(), epub->getThumbBmpPath().c_str(),
-                            static_cast<uint8_t>(epub->calculateProgress(currentSpineIndex, 0.0f) * 100.0f));
+  StatsManager.beginSession(
+      epub->getCachePath().c_str(), epub->getTitle().c_str(),
+      epub->getAuthor().c_str(),  // new
+      epub->getPath().c_str(), epub->getThumbBmpPath().c_str(),
+      static_cast<uint8_t>(epub->progressPercent(currentSpineIndex, nextPageNumber, cachedChapterTotalPageCount)));
 }
 
 void EpubReaderActivity::onExit() {
   // End reading stats session — compute current progress
   {
-    const float chapterProg = (section && section->pageCount > 0)
-                                  ? static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount)
-                                  : 0.0f;
-    const uint8_t prog = static_cast<uint8_t>(epub->calculateProgress(currentSpineIndex, chapterProg) * 100.0f);
+    const int currentPage = section ? section->currentPage : 0;
+    const int pageCount = section ? section->pageCount : 0;
+    const uint8_t prog = static_cast<uint8_t>(epub->progressPercent(currentSpineIndex, currentPage, pageCount));
     StatsManager.endSession(prog, sessionPagesTurned);  // new
   }
   Activity::onExit();
@@ -181,12 +181,10 @@ void EpubReaderActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     const int currentPage = section ? section->currentPage + 1 : 0;
     const int totalPages = section ? section->pageCount : 0;
-    float bookProgress = 0.0f;
-    if (epub->getBookSize() > 0 && section && section->pageCount > 0) {
-      const float chapterProgress = static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount);
-      bookProgress = epub->calculateProgress(currentSpineIndex, chapterProgress) * 100.0f;
-    }
-    const int bookProgressPercent = clampPercent(static_cast<int>(bookProgress + 0.5f));
+    const int bookProgressPercent =
+        (epub->getBookSize() > 0 && section)
+            ? clampPercent(epub->progressPercent(currentSpineIndex, section->currentPage, section->pageCount))
+            : 0;
 
     const bool hasDictionary = Dictionary::exists();
     const bool hasLookupHistory = hasDictionary && LookupHistory::hasHistory(epub->getCachePath());
@@ -443,12 +441,10 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
     }
 
     case EpubReaderMenuActivity::MenuAction::GO_TO_PERCENT: {
-      float bookProgress = 0.0f;
-      if (epub && epub->getBookSize() > 0 && section && section->pageCount > 0) {
-        const float chapterProgress = static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount);
-        bookProgress = epub->calculateProgress(currentSpineIndex, chapterProgress) * 100.0f;
-      }
-      const int initialPercent = clampPercent(static_cast<int>(bookProgress + 0.5f));
+      const int initialPercent =
+          (epub && epub->getBookSize() > 0 && section)
+              ? clampPercent(epub->progressPercent(currentSpineIndex, section->currentPage, section->pageCount))
+              : 0;
       startActivityForResult(
           std::make_unique<EpubReaderPercentSelectionActivity>(renderer, mappedInput, initialPercent),
           [this](const ActivityResult& result) {
@@ -822,11 +818,19 @@ void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
     LOG_ERR("ERS", "Could not save progress!");
   }
 
-  // Push the byte-weighted percent into the home cache so the next home
-  // entry paints the progress ring instantly without re-parsing book.bin.
-  // recordProgress no-ops when the spineIndex+percent are unchanged, so
-  // turning pages within the same chapter doesn't hammer flash.
-  const int percent = static_cast<int>(epub->calculateProgress(currentSpineIndex, 0.0f) * 100.0f);
+  // Push the percent into the home cache so the next home entry paints the
+  // progress ring instantly without re-parsing book.bin. Stays chapter-grain
+  // (chapter-start fraction) so recordProgress no-ops on every page turn
+  // within a chapter — page-grain would write home_progress.json on every
+  // forward, hammering flash. The one exception is the last page of the
+  // last chapter: chapter-start there is ~99%, but the user has finished
+  // the book and home should show 100%, so we override.
+  const int spineCount = epub->getSpineItemsCount();
+  const bool atEndOfBook = (spineCount > 0 && currentSpineIndex == spineCount - 1 && pageCount > 0 &&
+                            currentPage >= pageCount - 1);
+  const int percent = atEndOfBook
+                          ? 100
+                          : static_cast<int>(epub->calculateProgress(currentSpineIndex, 0.0f) * 100.0f);
   HomeProgressCache::getInstance().recordProgress(epub->getPath(), currentSpineIndex,
                                                   static_cast<int8_t>(percent));
 }

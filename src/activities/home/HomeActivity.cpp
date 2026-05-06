@@ -497,6 +497,16 @@ void HomeActivity::moveFocus(int dRow, int dCol) {
 }
 
 void HomeActivity::openFocused() {
+  // Release the 48KB cover-snapshot buffer before launching any sub-activity.
+  // The buffer is only useful for fast selection-border redraws while staying
+  // on home; once we navigate away it just sits on the stack consuming heap
+  // that heap-hungry sub-activities (notably CrossPointWebServerActivity with
+  // its WiFi + WebServer + WebSocketsServer + mDNS stack) need to start
+  // cleanly. onExit only frees it when home is destroyed, not when pushed,
+  // so without this call the buffer survives the push and silently starves
+  // the sub-activity. The next home render after pop repopulates the buffer.
+  freeCoverBuffer();
+
   // Single-book tile -> open directly. Series stack -> push the viewer so
   // the user can pick which member to read. The viewer's first focus is
   // the most-recently-read member (bookIndices[0]), so "continue reading"

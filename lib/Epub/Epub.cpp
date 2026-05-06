@@ -887,6 +887,18 @@ float Epub::calculateProgress(const int currentSpineIndex, const float currentSp
   return totalProgress / static_cast<float>(bookSize);
 }
 
+int Epub::progressPercent(const int currentSpineIndex, const int currentPage, const int pageCount) const {
+  // currentPage is 0-based, so the last page is pageCount-1; (N-1)/N never
+  // hits 1.0 and the percent truncates to 99 even at end-of-book. Detect
+  // that case explicitly and clamp.
+  const int spineCount = getSpineItemsCount();
+  if (spineCount > 0 && currentSpineIndex == spineCount - 1 && pageCount > 0 && currentPage >= pageCount - 1) {
+    return 100;
+  }
+  const float chapterProg = (pageCount > 0) ? static_cast<float>(currentPage) / static_cast<float>(pageCount) : 0.0f;
+  return static_cast<int>(calculateProgress(currentSpineIndex, chapterProg) * 100.0f);
+}
+
 int Epub::resolveHrefToSpineIndex(const std::string& href) const {
   if (!bookMetadataCache || !bookMetadataCache->isLoaded()) return -1;
 
