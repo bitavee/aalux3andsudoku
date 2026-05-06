@@ -157,14 +157,16 @@ void ReadingStatsManager::endSession(uint8_t progressPercent, uint32_t sessionPa
   const bool longEnoughForLastSession = (elapsedMs >= STATS_MIN_SESSION_MS);
 
   if (sessionBookIndex < global.bookCount) {
-    // Don't let a coarser update (e.g. the deep-sleep safety-net call with 0)
-    // walk the percentage backward. Real reader exits pass a precise value.
-    if (progressPercent >= books[sessionBookIndex].progressPercent) {
-      if (progressPercent == 100 && books[sessionBookIndex].progressPercent < 100) {
-        global.totalBooksFinished++;
-      }
-      books[sessionBookIndex].progressPercent = progressPercent;
+    // Always reflect the user's true current position. The reader is the only
+    // caller now (the deep-sleep safety-net endSession(0, 0) was removed in
+    // main.cpp:enterDeepSleep) and it always passes a precise, page-accurate
+    // value, so a smaller percentage means the user really did navigate
+    // backward. The "Finished Books" lifetime counter only ever increments,
+    // so regressing from 100% does not decrement it.
+    if (progressPercent == 100 && books[sessionBookIndex].progressPercent < 100) {
+      global.totalBooksFinished++;
     }
+    books[sessionBookIndex].progressPercent = progressPercent;
 
     if (longEnoughForLastSession) {
       books[sessionBookIndex].lastSessionMs = elapsedMs;
