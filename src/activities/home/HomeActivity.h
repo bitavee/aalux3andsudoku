@@ -67,6 +67,14 @@ class HomeActivity final : public Activity {
   bool rowIsFocusable(FocusRow row) const;
   int rowItemCount(FocusRow row) const;
   void openFocused();
+  // Returns the book under the current focus when the focused tile holds
+  // exactly one book; returns nullptr for menu rows or series stacks. Used
+  // by the long-press "Remove from recents" flow which only operates on
+  // single-book tiles (series-stack removal is a separate UX question).
+  const RecentBook* focusedSingleBook() const;
+  // Long-press Confirm on a single-book tile. Pushes ConfirmationActivity;
+  // on accept, removes the book from RecentBooksStore and reloads home.
+  void confirmRemoveFocusedBook();
 
   // --- Rendering ---
   Rect heroRect() const;

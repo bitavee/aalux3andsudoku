@@ -174,6 +174,26 @@ void drawProgressRing(const GfxRenderer& renderer, int cx, int cy, int outerR, i
   }
 }
 
+// Two-stroke checkmark centred at (cx, cy), sized to fit inside a circle of
+// radius `radius`. Used as the "finished" affordance inside the hero's
+// progress ring — replaces the "100%" label so a finished book reads as an
+// at-a-glance "done" check rather than a number.
+void drawCheckmark(const GfxRenderer& renderer, int cx, int cy, int radius) {
+  if (radius <= 4) return;
+  // Inscribe inside ~75% of the inner circle. The check leans bottom-right of
+  // centre by convention (vertex below mid, long stroke going up-right).
+  const float scale = static_cast<float>(radius) * 0.75f;
+  const int leftX = cx - static_cast<int>(scale * 0.55f);
+  const int leftY = cy + static_cast<int>(scale * 0.05f);
+  const int vertexX = cx - static_cast<int>(scale * 0.10f);
+  const int vertexY = cy + static_cast<int>(scale * 0.45f);
+  const int rightX = cx + static_cast<int>(scale * 0.65f);
+  const int rightY = cy - static_cast<int>(scale * 0.45f);
+  const int thickness = std::max(2, radius / 8);
+  renderer.drawLine(leftX, leftY, vertexX, vertexY, thickness, /*state=*/true);
+  renderer.drawLine(vertexX, vertexY, rightX, rightY, thickness, /*state=*/true);
+}
+
 }  // namespace
 
 namespace HomeRenderer {
@@ -242,13 +262,21 @@ void drawHero(GfxRenderer& renderer, const Rect& rect, const RecentBook& book, i
 
       drawProgressRing(renderer, cx, cy, outerR, kRingThickness, progressPercent);
 
-      // Centered percent label inside the ring.
-      char percentStr[8];
-      std::snprintf(percentStr, sizeof(percentStr), "%d%%", static_cast<int>(progressPercent));
-      const int labelWidth = renderer.getTextWidth(BOOKERLY_18_FONT_ID, percentStr, EpdFontFamily::BOLD);
-      const int labelHeight = renderer.getLineHeight(BOOKERLY_18_FONT_ID);
-      renderer.drawText(BOOKERLY_18_FONT_ID, cx - labelWidth / 2, cy - labelHeight / 2 - 2, percentStr, true,
-                        EpdFontFamily::BOLD);
+      if (progressPercent >= 100) {
+        // Finished books read better as a glanceable check than the digits
+        // "100%". The ring outline still communicates "this book has a
+        // completion state", and the check inside replaces the percent label.
+        const int innerR = std::max(0, outerR - kRingThickness);
+        drawCheckmark(renderer, cx, cy, innerR);
+      } else {
+        // Centered percent label inside the ring.
+        char percentStr[8];
+        std::snprintf(percentStr, sizeof(percentStr), "%d%%", static_cast<int>(progressPercent));
+        const int labelWidth = renderer.getTextWidth(BOOKERLY_18_FONT_ID, percentStr, EpdFontFamily::BOLD);
+        const int labelHeight = renderer.getLineHeight(BOOKERLY_18_FONT_ID);
+        renderer.drawText(BOOKERLY_18_FONT_ID, cx - labelWidth / 2, cy - labelHeight / 2 - 2, percentStr, true,
+                          EpdFontFamily::BOLD);
+      }
     }
   }
 }

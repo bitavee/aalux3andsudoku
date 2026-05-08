@@ -44,6 +44,11 @@ class RecentBooksStore {
                   const std::string& coverBmpPath, const std::string& seriesName = {},
                   const std::string& seriesIndex = {});
 
+  // Remove the recents entry for `path`. No-op if the path is not in the
+  // list. Persists to disk on success. Does not touch the book's cache
+  // directory or stats — only the home recents list.
+  bool removeBook(const std::string& path);
+
   // Get the list of recent books (most recent first)
   const std::vector<RecentBook>& getBooks() const { return recentBooks; }
 

@@ -17,7 +17,9 @@
 #include "SeriesGrouping.h"
 #include "SeriesViewerActivity.h"
 #include "activities/network/CrossPointWebServerActivity.h"
+#include "activities/reader/ReaderUtils.h"  // GO_HOME_MS — shared long-press threshold across the UI
 #include "activities/stats/StatsActivity.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "components/HomeProgressCache.h"
 #include "components/HomeRenderer.h"
 #include "components/UITheme.h"
@@ -96,7 +98,14 @@ void HomeActivity::onExit() {
 
 void HomeActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    openFocused();
+    // Long-press Confirm on a single-book tile = "Remove from recents".
+    // Series stacks and menu rows fall through to short-press (open),
+    // because removing a series-stack member is a separate UX problem.
+    if (mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS && focusedSingleBook() != nullptr) {
+      confirmRemoveFocusedBook();
+    } else {
+      openFocused();
+    }
     return;
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
@@ -591,6 +600,79 @@ void HomeActivity::openFocused() {
       }
       break;
   }
+}
+
+const RecentBook* HomeActivity::focusedSingleBook() const {
+  int tileIndex = -1;
+  switch (focusRow) {
+    case FOCUS_HERO:
+      tileIndex = 0;
+      break;
+    case FOCUS_THUMBS_R1:
+      tileIndex = focusIndex + 1;
+      break;
+    case FOCUS_THUMBS_R2:
+      tileIndex = focusIndex + 1 + kThumbsPerRow;
+      break;
+    case FOCUS_MENU:
+      return nullptr;
+  }
+  if (tileIndex < 0 || tileIndex >= static_cast<int>(tiles.size())) return nullptr;
+  const HomeTile& tile = tiles[tileIndex];
+  if (tile.bookIndices.size() != 1) return nullptr;  // skip series stacks
+  const int bookIdx = tile.bookIndices[0];
+  if (bookIdx < 0 || bookIdx >= static_cast<int>(recentBooks.size())) return nullptr;
+  return &recentBooks[bookIdx];
+}
+
+void HomeActivity::confirmRemoveFocusedBook() {
+  const RecentBook* book = focusedSingleBook();
+  if (!book) return;
+
+  // Capture the path now -- we re-resolve via focusedSingleBook() inside the
+  // result handler in case the focus moved or the list shifted while the
+  // dialog was open. The path is the stable key in recents.
+  const std::string targetPath = book->path;
+  const std::string title = book->title.empty() ? book->path : book->title;
+
+  // Match the openFocused() behaviour: drop the 48KB cover snapshot before
+  // pushing a sub-activity, so we don't starve the dialog's renderer.
+  freeCoverBuffer();
+
+  auto handler = [this, targetPath](const ActivityResult& result) {
+    if (result.isCancelled) return;
+    if (!RECENT_BOOKS.removeBook(targetPath)) {
+      LOG_DBG("HOME", "removeBook no-op for %s (already gone?)", targetPath.c_str());
+      return;
+    }
+    LOG_DBG("HOME", "Removed from recents: %s", targetPath.c_str());
+
+    // Rebuild the visible recents list and tiles from the now-shrunk store.
+    recentBooks.clear();
+    tiles.clear();
+    coverBufferStored = false;
+    firstRenderDone = false;
+    loadRecentBooks(kMaxHomeRecents);
+
+    // Snap focus back somewhere valid: the focused index may now be past the
+    // end of its row (or the row may have collapsed entirely).
+    if (recentBooks.empty()) {
+      focusRow = FOCUS_MENU;
+      focusIndex = 0;
+    } else {
+      const int rowCount = rowItemCount(focusRow);
+      if (rowCount <= 0) {
+        focusRow = FOCUS_HERO;
+        focusIndex = 0;
+      } else if (focusIndex >= rowCount) {
+        focusIndex = rowCount - 1;
+      }
+    }
+    requestUpdate();
+  };
+
+  startActivityForResult(
+      std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_REMOVE_FROM_RECENTS), title), handler);
 }
 
 // ---------- Geometry ----------
