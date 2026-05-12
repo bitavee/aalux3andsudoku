@@ -11,6 +11,15 @@ My primary goal with AALU is to build a highly customizable, personalized readin
 
 *This project is **not affiliated with Xteink**; it's built independently as a personal/community project.*
 
+## Screenshots
+
+A look at the UI running on a Xteink X4 — captured straight from the E-ink panel.
+
+| Home | Series viewer |
+| :---: | :---: |
+| ![Home screen showing the hero book with a circular progress ring and a 3x2 grid of recent reads with series-count badges](./docs/images/screenshots/home.jpeg) | ![Series viewer showing all 8 books in the "Dungeon Crawler Carl" series in a 3-column grid](./docs/images/screenshots/series-viewer.jpeg) |
+| Hero book with the progress ring (39%), "Recent Reads" grid with series-count badges, and the bottom menu (Files / Statistics / Transfer / Settings). | Drill-in series viewer reached by opening a stack tile from home — every member of the series shown in reading order. |
+
 ## What's Inherited vs. What's New
 
 **Inherited from CrossPoint (The Core Engine):**
