@@ -92,6 +92,12 @@ class GfxRenderer {
 
   // Drawing
   void drawPixel(int x, int y, bool state = true) const;
+  // Reads a single 1-bit framebuffer pixel at logical (x, y), honouring the
+  // current orientation just like drawPixel. Returns true when the pixel is
+  // ink (a "dark" pixel), false when blank (white). Returns false for
+  // out-of-bounds reads. Useful for adaptive-contrast overlays that need to
+  // know whether the area underneath the text is dark or light.
+  bool readPixel(int x, int y) const;
   void drawLine(int x1, int y1, int x2, int y2, bool state = true) const;
   void drawLine(int x1, int y1, int x2, int y2, int lineWidth, bool state) const;
   void drawArc(int maxRadius, int cx, int cy, int xDir, int yDir, int lineWidth, bool state) const;

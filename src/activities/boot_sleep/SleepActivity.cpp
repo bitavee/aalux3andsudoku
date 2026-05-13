@@ -259,19 +259,37 @@ void SleepActivity::drawBookInsightsOverlay() const {
   const int titleLineHeight = renderer.getLineHeight(UI_12_FONT_ID);
   const int percentLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
 
-  // Title hugs the bottom-center. Percent sits in the bottom-right corner
-  // so the two never compete for space — title can use the full width even
-  // when the percent is shown.
-  const int titleY = pageHeight - kBottomPadding - titleLineHeight;
+  // Adaptive contrast: count ink pixels in the bounding box the text is about
+  // to occupy. If the majority of the underlying wallpaper is dark, draw the
+  // text in white; otherwise draw black. Stride-3 sampling is sufficient for
+  // a majority estimate and keeps this cheap (one short call per overlay,
+  // bounded by text area on a 1-bit framebuffer).
+  auto isRegionDark = [&](int x, int y, int w, int h) {
+    if (w <= 0 || h <= 0) return false;
+    constexpr int kStride = 3;
+    int dark = 0;
+    int total = 0;
+    for (int dy = 0; dy < h; dy += kStride) {
+      for (int dx = 0; dx < w; dx += kStride) {
+        if (renderer.readPixel(x + dx, y + dy)) ++dark;
+        ++total;
+      }
+    }
+    return total > 0 && dark * 2 > total;
+  };
 
-  // Reserve space on the right for the percent so the centered title
-  // doesn't visually drift into it. SMALL_FONT max width ~ 4 chars ("100%"),
-  // plus side padding. Keep generous to avoid mid-glyph collisions.
+  // Title hugs the bottom-center; percent (if any) sits in the bottom-right.
+  // Reserve space on the right for the percent so the centered title doesn't
+  // collide with it; titles longer than that budget get an ellipsis.
   constexpr int kPercentReserveWidth = 56;
   const int titleMaxWidth = pageWidth - 2 * kSidePadding - ((percent >= 0) ? kPercentReserveWidth : 0);
   const std::string truncTitle =
       renderer.truncatedText(UI_12_FONT_ID, title.c_str(), titleMaxWidth, EpdFontFamily::BOLD);
-  renderer.drawCenteredText(UI_12_FONT_ID, titleY, truncTitle.c_str(), /*black=*/true, EpdFontFamily::BOLD);
+  const int titleWidth = renderer.getTextWidth(UI_12_FONT_ID, truncTitle.c_str(), EpdFontFamily::BOLD);
+  const int titleX = (pageWidth - titleWidth) / 2;
+  const int titleY = pageHeight - kBottomPadding - titleLineHeight;
+  const bool titleOnDark = isRegionDark(titleX, titleY, titleWidth, titleLineHeight);
+  renderer.drawText(UI_12_FONT_ID, titleX, titleY, truncTitle.c_str(), /*black=*/!titleOnDark, EpdFontFamily::BOLD);
 
   if (percent >= 0) {
     char pctBuf[8];
@@ -279,7 +297,8 @@ void SleepActivity::drawBookInsightsOverlay() const {
     const int pctWidth = renderer.getTextWidth(SMALL_FONT_ID, pctBuf);
     const int pctX = pageWidth - kSidePadding - pctWidth;
     const int pctY = pageHeight - kBottomPadding - percentLineHeight;
-    renderer.drawText(SMALL_FONT_ID, pctX, pctY, pctBuf, /*black=*/true);
+    const bool pctOnDark = isRegionDark(pctX, pctY, pctWidth, percentLineHeight);
+    renderer.drawText(SMALL_FONT_ID, pctX, pctY, pctBuf, /*black=*/!pctOnDark);
   }
 }
 
