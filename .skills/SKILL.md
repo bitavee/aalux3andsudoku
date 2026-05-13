@@ -4,7 +4,7 @@ Project: Open-source e-reader firmware for the **Xteink X4** (ESP32-C3).
 Origin: Originally forked from [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader); now an independent system with its own UI, Dictionary engine, KOReader sync, and Reading Stats.
 Mission: Provide a lightweight, high-performance, *personalized* reading experience focused on EPUB rendering on constrained hardware.
 Repo root: `/Users/disrael/Projects/personal/xteink/aalu`
-Current firmware version: see `[aalu] version` in `platformio.ini` (currently `1.0.7`).
+Current firmware version: see `[aalu] version` in `platformio.ini` (currently `1.1.0`).
 
 > Note: Many code-level identifiers (e.g. `CrossPointSettings`, `CrossPointState`, the `.crosspoint/` cache directory) intentionally retain the upstream names for backward compatibility with existing on-device caches. **Do not rename them** unless you also ship a binary migration path (see `stats.bin` migration in [Stats refactor](#aalu-specific-features)).
 
@@ -104,7 +104,7 @@ These flags fundamentally shape firmware behaviour. Do not change them lightly.
 -DXML_GE=0                            // Disable XML general entities (security)
 -DUSE_UTF8_LONG_NAMES=1               // SD card long-filename support
 -DPNG_MAX_BUFFERED_PIXELS=16416       // Allow up to 2048px-wide PNG scanlines
--DAALU_VERSION=\"1.0.7\"        // Set from [aalu] version
+-DAALU_VERSION=\"1.1.0\"        // Set from [aalu] version
 -fno-exceptions                       // No C++ exceptions
 -std=gnu++2a                          // C++20
 ```

@@ -739,7 +739,16 @@ void HomeActivity::renderFull() {
   renderer.clearScreen();
 
   const auto& metrics = UITheme::getInstance().getMetrics();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight}, nullptr);
+  const Rect headerRect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight};
+  // Draw header chrome (battery widget) with no title — drawHeader's title
+  // path uses UI_12 BOLD at rect.y+5, which is visually heavier than what
+  // home wants. Render the brand manually so it shares the battery
+  // percentage's baseline (y+5 in header coords; the battery widget itself
+  // is rect.y+5 inside drawHeader, and its percentage text uses SMALL_FONT
+  // at that rect's y). Bold for prominence.
+  GUI.drawHeader(renderer, headerRect, nullptr);
+  renderer.drawCenteredText(SMALL_FONT_ID, headerRect.y + 5, tr(STR_AALU_READER), /*black=*/true,
+                            EpdFontFamily::BOLD);
 
   if (tiles.empty()) {
     HomeRenderer::drawHeroEmpty(renderer, heroRect());
@@ -794,9 +803,18 @@ void HomeActivity::render(RenderLock&&) {
   renderFull();
   firstRenderDone = true;
 
+  // Snapshot the bare home (no selection border) so subsequent focus
+  // changes can restore-and-redraw cheaply. This 48 KB malloc can fail
+  // when the heap is fragmented — most notably right after a File
+  // Transfer / WiFi session, where the WebServer + WebSocket + DNS + mDNS
+  // teardown leaves total free heap above 48 KB but no contiguous block.
   coverBufferStored = storeCoverBuffer();
-  if (coverBufferStored) {
-    HomeRenderer::drawSelectionBorder(renderer, focusedItemRect(), roundTopOnly, roundTopOnly, false, false);
-  }
+  // ALWAYS draw the selection border, regardless of whether the snapshot
+  // succeeded. Previously this was gated by `coverBufferStored`, which
+  // meant a fragmented-heap malloc failure made the user's focus
+  // disappear from the home grid until reboot. The snapshot is just a
+  // render-perf optimization for the *next* frame; the border itself must
+  // show on this frame either way.
+  HomeRenderer::drawSelectionBorder(renderer, focusedItemRect(), roundTopOnly, roundTopOnly, false, false);
   renderer.displayBuffer();
 }
