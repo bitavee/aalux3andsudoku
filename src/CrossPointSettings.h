@@ -24,6 +24,11 @@ class CrossPointSettings {
     COVER = 3,
     BLANK = 4,
     COVER_CUSTOM = 5,
+    // Same image source as CUSTOM (random pick from /.sleep/) but with an
+    // overlay band at the bottom showing the current book title + read
+    // percentage. Added at the end of the enum so existing stored settings
+    // continue to map to the same modes.
+    CUSTOM_INSIGHTS = 6,
     SLEEP_SCREEN_MODE_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };

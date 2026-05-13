@@ -10,6 +10,8 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "RecentBooksStore.h"
+#include "components/HomeProgressCache.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/Logo120.h"
@@ -22,6 +24,9 @@ void SleepActivity::onEnter() {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::BLANK):
       return renderBlankSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM):
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM_INSIGHTS):
+      // Same image discovery + selection as CUSTOM; the overlay is drawn
+      // inside renderBitmapSleepScreen by inspecting SETTINGS.sleepScreen.
       return renderCustomSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER):
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_CUSTOM):
@@ -189,9 +194,18 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap) const {
     renderer.invertScreen();
   }
 
+  // CUSTOM_INSIGHTS overlays the book title + read percentage on top of the
+  // bitmap. Drawn here before displayBuffer so it makes it onto the same
+  // frame as the background. Grayscale is skipped below since the grayscale
+  // path repaints via displayGrayBuffer and would clobber the overlay.
+  const bool drawInsights = (SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM_INSIGHTS);
+  if (drawInsights) {
+    drawBookInsightsOverlay();
+  }
+
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 
-  if (hasGreyscale) {
+  if (hasGreyscale && !drawInsights) {
     bitmap.rewindToData();
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
@@ -206,6 +220,66 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap) const {
 
     renderer.displayGrayBuffer();
     renderer.setRenderMode(GfxRenderer::BW);
+  }
+}
+
+void SleepActivity::drawBookInsightsOverlay() const {
+  if (APP_STATE.openEpubPath.empty()) return;
+
+  // Title: prefer the cached title from RecentBooksStore (already loaded at
+  // boot, no SD round-trip). Fall back to the filename so we never render an
+  // empty overlay — worse than no overlay at all.
+  std::string title;
+  for (const auto& book : RECENT_BOOKS.getBooks()) {
+    if (book.path == APP_STATE.openEpubPath) {
+      title = book.title;
+      break;
+    }
+  }
+  if (title.empty()) {
+    const size_t slash = APP_STATE.openEpubPath.find_last_of('/');
+    title = (slash != std::string::npos) ? APP_STATE.openEpubPath.substr(slash + 1) : APP_STATE.openEpubPath;
+  }
+  if (title.empty()) return;
+
+  // Progress: actively hydrate the cache before the lookup. HomeActivity's
+  // onExit calls HomeProgressCache::clear(), so if the user went
+  // home → reader → sleep, the in-memory cache is empty when we get here.
+  // loadProgressFor reads home_progress.json (and falls back to recomputing
+  // from book.bin if the cache is stale), then getProgress returns the
+  // freshly-loaded percent. Without this call, getProgress always returns
+  // Unknown in that flow and the percentage stays hidden.
+  HomeProgressCache::getInstance().loadProgressFor(APP_STATE.openEpubPath);
+  const int8_t percent = HomeProgressCache::getInstance().getProgress(APP_STATE.openEpubPath);
+
+  const int pageWidth = renderer.getScreenWidth();
+  const int pageHeight = renderer.getScreenHeight();
+  constexpr int kSidePadding = 16;
+  constexpr int kBottomPadding = 16;
+  const int titleLineHeight = renderer.getLineHeight(UI_12_FONT_ID);
+  const int percentLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+
+  // Title hugs the bottom-center. Percent sits in the bottom-right corner
+  // so the two never compete for space — title can use the full width even
+  // when the percent is shown.
+  const int titleY = pageHeight - kBottomPadding - titleLineHeight;
+
+  // Reserve space on the right for the percent so the centered title
+  // doesn't visually drift into it. SMALL_FONT max width ~ 4 chars ("100%"),
+  // plus side padding. Keep generous to avoid mid-glyph collisions.
+  constexpr int kPercentReserveWidth = 56;
+  const int titleMaxWidth = pageWidth - 2 * kSidePadding - ((percent >= 0) ? kPercentReserveWidth : 0);
+  const std::string truncTitle =
+      renderer.truncatedText(UI_12_FONT_ID, title.c_str(), titleMaxWidth, EpdFontFamily::BOLD);
+  renderer.drawCenteredText(UI_12_FONT_ID, titleY, truncTitle.c_str(), /*black=*/true, EpdFontFamily::BOLD);
+
+  if (percent >= 0) {
+    char pctBuf[8];
+    snprintf(pctBuf, sizeof(pctBuf), "%d%%", static_cast<int>(percent));
+    const int pctWidth = renderer.getTextWidth(SMALL_FONT_ID, pctBuf);
+    const int pctX = pageWidth - kSidePadding - pctWidth;
+    const int pctY = pageHeight - kBottomPadding - percentLineHeight;
+    renderer.drawText(SMALL_FONT_ID, pctX, pctY, pctBuf, /*black=*/true);
   }
 }
 
