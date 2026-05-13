@@ -13,6 +13,7 @@
 #include <SPI.h>
 #include <builtinFonts/all.h>
 
+#include <algorithm>
 #include <cstring>
 
 #include "CrossPointSettings.h"
@@ -22,6 +23,7 @@
 #include "RecentBooksStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "activities/boot_sleep/BootActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "stats/ReadingStatsManager.h"  // added when developing Statistics menu
@@ -311,16 +313,22 @@ void setup() {
 
   setupDisplayAndFonts();
 
-  activityManager.goToBoot();
-
+  // Load persisted state up-front so we can decide whether to show the boot
+  // logo or jump straight to the resuming card. Doing this *before* any first
+  // render is what collapses cold-boot from logo→card→reader (three full
+  // E-ink refreshes) down to card→reader (two) on the resume path.
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
+  ReadingStatsManager::getInstance().load();
 
   // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
   // crashed (indicated by readerActivityLoadCount > 0)
-  ReadingStatsManager::getInstance().load();
-  if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
-      mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
+  const bool isResuming = !APP_STATE.openEpubPath.empty() && APP_STATE.lastSleepFromReader &&
+                          !mappedInputManager.isPressed(MappedInputManager::Button::Back) &&
+                          APP_STATE.readerActivityLoadCount == 0;
+
+  if (!isResuming) {
+    activityManager.goToBoot();
     activityManager.goHome();
   } else {
     // Clear app state to avoid getting into a boot loop if the epub doesn't load
@@ -328,6 +336,29 @@ void setup() {
     APP_STATE.openEpubPath = "";
     APP_STATE.readerActivityLoadCount++;
     APP_STATE.saveToFile();
+
+    // POLISH-BOOT (docs/UX_REDESIGN.md §2.1.1): render the "Resuming…" card as
+    // the *first* frame, replacing the logo screen. Card carries a small AALU
+    // brand mark so identity is preserved. If the book isn't in recents (rare),
+    // fall back to the logo screen so the panel isn't blank while the reader
+    // loads.
+    const auto& recents = RECENT_BOOKS.getBooks();
+    const auto it = std::find_if(recents.begin(), recents.end(),
+                                 [&path](const RecentBook& b) { return b.path == path; });
+    if (it != recents.end()) {
+      int8_t pct = -1;
+      for (uint8_t i = 0; i < StatsManager.getBookCount(); ++i) {
+        const auto& e = StatsManager.getBook(i);
+        if (std::strncmp(e.bookPath, path.c_str(), sizeof(e.bookPath)) == 0) {
+          pct = static_cast<int8_t>(e.progressPercent);
+          break;
+        }
+      }
+      BootActivity::renderResumingCard(renderer, *it, pct);
+    } else {
+      activityManager.goToBoot();
+    }
+
     activityManager.goToReader(path);
   }
 
