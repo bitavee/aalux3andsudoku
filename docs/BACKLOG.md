@@ -32,8 +32,8 @@ Improvements to existing screens. Mostly bounded effort, low risk. Phase 1 of th
 | `POLISH-MENU` | Restructure Reader Confirm menu into 4 sections (Navigate / Reading / Screen / Book) | P0 | M | none | [§2.3.2](./UX_REDESIGN.md#232-epubreadermenuactivity--the-confirm-menu) |
 | `POLISH-STATUSBAR` | Collapse status bar 6 variants → 3 (None / Minimal / Full) and add "12m left" time estimate | P0 | M | scope | [§2.3.1](./UX_REDESIGN.md#231-epubreaderactivity--the-page) |
 | `POLISH-HINTS` | State-aware button hint row; surface long-press affordances | P0 | M | none | [§3.3](./UX_REDESIGN.md#33-button-hint-affordance) |
-| `POLISH-HERO` | Home hero redesign: typographic hierarchy, linear bar, time-left line | P1 | M | refresh | [§2.2.1](./UX_REDESIGN.md#221-homeactivity) |
-| `POLISH-SERIES-VIEWER` | Series viewer: fix footer cutoff, add author/finished count, status glyphs per book, 2-line title wrap | P1 | M | none | [§2.2.2](./UX_REDESIGN.md#222-seriesvieweractivity) |
+| ~~`POLISH-HERO`~~ | ~~Home hero redesign: typographic hierarchy, linear bar, time-left line~~ ✅ | ~~P1~~ | ~~M~~ | ~~refresh~~ | [§2.2.1](./UX_REDESIGN.md#221-homeactivity) |
+| ~~`POLISH-SERIES-VIEWER`~~ | ~~Series viewer: fix footer cutoff, add author/finished count, status glyphs per book, 2-line title wrap~~ ✅ | ~~P1~~ | ~~M~~ | ~~none~~ | [§2.2.2](./UX_REDESIGN.md#222-seriesvieweractivity) |
 | `POLISH-STATS-TOP` | Stats: explicit Reading/Finished tab UI, year/month summary, 30-day sparkline | P1 | M | none | [§2.6.1](./UX_REDESIGN.md#261-statsactivity-the-global--list-view) |
 | `POLISH-SETTINGS-REBALANCE` | Rebalance Settings tabs: add Network tab, move misplaced rows; document tab-nav rule | P1 | M | none | [§2.8.1](./UX_REDESIGN.md#281-settingsactivity-root) |
 | `POLISH-EMPTY-STATES` | Standard empty-state component: headline + next-action across all empty screens | P1 | S | none | [§3.4](./UX_REDESIGN.md#34-empty-states) |

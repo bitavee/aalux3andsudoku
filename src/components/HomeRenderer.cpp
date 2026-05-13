@@ -6,9 +6,9 @@
 #include <I18n.h>
 #include <Logging.h>
 
-#include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -17,13 +17,13 @@
 #include "components/UITheme.h"
 #include "components/themes/BaseTheme.h"
 #include "fontIds.h"
+#include "stats/ReadingStatsManager.h"
 
 namespace {
 
 constexpr int kHeroPadding = 20;
 constexpr int kHeroCoverWidth = 200;
 constexpr int kHeroMetaGap = 20;
-constexpr int kRingThickness = 12;
 
 constexpr int kThumbWidth = 100;
 constexpr int kThumbHeight = 150;
@@ -130,68 +130,40 @@ bool drawCover(GfxRenderer& renderer, int x, int y, int width, int height, const
   return true;
 }
 
-// Donut-style progress indicator. The full ring is outlined regardless of
-// progress; the progress portion is filled clockwise starting at 12 o'clock.
-// This is a brute-force pass over the bounding box (one atan2 per ring pixel),
-// which is fast enough on E-ink even at ~80 px outer radius - the heavy work
-// only runs when the home re-renders, not on every selection change.
-void drawProgressRing(const GfxRenderer& renderer, int cx, int cy, int outerR, int ringThickness, int8_t percent) {
-  if (percent < 0) percent = 0;
-  if (percent > 100) percent = 100;
-
-  const int innerR = std::max(0, outerR - ringThickness);
-  const int outerRsq = outerR * outerR;
-  const int innerRsq = innerR * innerR;
-  const int outerRimSq = (outerR - 1) * (outerR - 1);  // 1 px outer rim
-  const int innerRimSq = innerR > 0 ? innerR * innerR : 0;
-  const int innerRimInnerSq = innerR > 1 ? (innerR - 1) * (innerR - 1) : 0;
-  const float endAngleDeg = percent * 3.6f;
-
-  for (int dy = -outerR; dy <= outerR; ++dy) {
-    for (int dx = -outerR; dx <= outerR; ++dx) {
-      const int distSq = dx * dx + dy * dy;
-      if (distSq > outerRsq) continue;
-
-      // Always draw both rims so the empty portion of the ring still reads
-      // as a circle rather than vanishing on a 0%-progress book.
-      const bool isOuterRim = distSq > outerRimSq && distSq <= outerRsq;
-      const bool isInnerRim = innerR > 0 && distSq > innerRimInnerSq && distSq <= innerRimSq;
-      if (isOuterRim || isInnerRim) {
-        renderer.drawPixel(cx + dx, cy + dy, true);
-        continue;
-      }
-
-      // Filled portion is the area between rims; gate by clockwise angle.
-      if (distSq <= innerRsq) continue;
-
-      // 12 o'clock = (0, -outerR), clockwise positive: angle = atan2(dx, -dy)
-      float angle = atan2f(static_cast<float>(dx), static_cast<float>(-dy)) * 180.0f / static_cast<float>(M_PI);
-      if (angle < 0) angle += 360.0f;
-      if (angle <= endAngleDeg) {
-        renderer.drawPixel(cx + dx, cy + dy, true);
-      }
+// Approximate human-friendly duration (e.g. "6h", "1h 12m", "47m", "<1m").
+// Used by the hero "time-left" line where exact precision is noise but the
+// at-a-glance shape ("hours" vs "minutes") drives the decision to crack the
+// book open.
+void formatTimeApprox(char* buf, size_t len, uint64_t ms) {
+  const uint32_t totalMin = static_cast<uint32_t>(ms / 60000ULL);
+  const uint32_t hours = totalMin / 60;
+  const uint32_t mins = totalMin % 60;
+  if (hours >= 1) {
+    if (mins >= 1 && hours < 10) {
+      std::snprintf(buf, len, "%uh %um", static_cast<unsigned>(hours), static_cast<unsigned>(mins));
+    } else {
+      std::snprintf(buf, len, "%uh", static_cast<unsigned>(hours));
     }
+  } else if (totalMin >= 1) {
+    std::snprintf(buf, len, "%um", static_cast<unsigned>(totalMin));
+  } else {
+    std::snprintf(buf, len, "<1m");
   }
 }
 
-// Two-stroke checkmark centred at (cx, cy), sized to fit inside a circle of
-// radius `radius`. Used as the "finished" affordance inside the hero's
-// progress ring — replaces the "100%" label so a finished book reads as an
-// at-a-glance "done" check rather than a number.
-void drawCheckmark(const GfxRenderer& renderer, int cx, int cy, int radius) {
-  if (radius <= 4) return;
-  // Inscribe inside ~75% of the inner circle. The check leans bottom-right of
-  // centre by convention (vertex below mid, long stroke going up-right).
-  const float scale = static_cast<float>(radius) * 0.75f;
-  const int leftX = cx - static_cast<int>(scale * 0.55f);
-  const int leftY = cy + static_cast<int>(scale * 0.05f);
-  const int vertexX = cx - static_cast<int>(scale * 0.10f);
-  const int vertexY = cy + static_cast<int>(scale * 0.45f);
-  const int rightX = cx + static_cast<int>(scale * 0.65f);
-  const int rightY = cy - static_cast<int>(scale * 0.45f);
-  const int thickness = std::max(2, radius / 8);
-  renderer.drawLine(leftX, leftY, vertexX, vertexY, thickness, /*state=*/true);
-  renderer.drawLine(vertexX, vertexY, rightX, rightY, thickness, /*state=*/true);
+// Looks up the stats entry for `book` by exact bookPath match. ReadingStatsManager
+// stores at most STATS_MAX_BOOK_ENTRIES (=9) books, so this is a cheap linear scan;
+// no caching needed.
+const BookStatEntry* findStatsByPath(const std::string& bookPath) {
+  if (bookPath.empty()) return nullptr;
+  const uint8_t count = StatsManager.getBookCount();
+  for (uint8_t i = 0; i < count; ++i) {
+    const BookStatEntry& entry = StatsManager.getBook(i);
+    if (std::strncmp(entry.bookPath, bookPath.c_str(), sizeof(entry.bookPath)) == 0) {
+      return &entry;
+    }
+  }
+  return nullptr;
 }
 
 }  // namespace
@@ -208,77 +180,140 @@ void drawHero(GfxRenderer& renderer, const Rect& rect, const RecentBook& book, i
     return;
   }
 
-  const int titleLineHeight = renderer.getLineHeight(UI_12_FONT_ID);
+  // Typographic hierarchy per POLISH-HERO (UX_REDESIGN §2.2.1):
+  //   Title  -- BOOKERLY_18 BOLD (XL)   : visual anchor, up to 2 wrapped lines.
+  //   Author -- UI_10 regular (M)        : secondary identity.
+  //   Series -- UI_10 italic (M-italic)  : tertiary, optional.
+  // Three sizes / weights instead of three roughly-equal siblings, so the eye
+  // lands on the title first.
+  const int titleLineHeight = renderer.getLineHeight(BOOKERLY_18_FONT_ID);
   const int authorLineHeight = renderer.getLineHeight(UI_10_FONT_ID);
 
-  const std::string title =
-      renderer.truncatedText(UI_12_FONT_ID, book.title.c_str(), metaWidth, EpdFontFamily::BOLD);
-  int textY = coverRect.y + 8;
-  renderer.drawText(UI_12_FONT_ID, metaX, textY, title.c_str(), true, EpdFontFamily::BOLD);
-  textY += titleLineHeight + 6;
+  int textY = coverRect.y + 6;
+  if (!book.title.empty()) {
+    // Wrapping (not truncating) lets two-word titles like "Iron Flame" sit on
+    // one line while longer ones break naturally. Cap at 2 lines so the rest
+    // of the metadata column (author, series, progress bar, time-left) still
+    // fits inside the 300 px hero band.
+    const std::vector<std::string> titleLines =
+        renderer.wrappedText(BOOKERLY_18_FONT_ID, book.title.c_str(), metaWidth, /*maxLines=*/2, EpdFontFamily::BOLD);
+    for (const auto& line : titleLines) {
+      renderer.drawText(BOOKERLY_18_FONT_ID, metaX, textY, line.c_str(), /*black=*/true, EpdFontFamily::BOLD);
+      textY += titleLineHeight + 2;
+    }
+    textY += 4;  // breath between title and author
+  }
 
   if (!book.author.empty()) {
     const std::string author = renderer.truncatedText(UI_10_FONT_ID, book.author.c_str(), metaWidth);
     renderer.drawText(UI_10_FONT_ID, metaX, textY, author.c_str());
-    textY += authorLineHeight + 6;
+    textY += authorLineHeight + 4;
   }
 
   if (!book.seriesName.empty()) {
-    // "Series Name" or "Series Name · Book N" -- truncated to fit the
-    // metadata column. Drawn in italic UI_10 to differentiate from the author
-    // line above. The separator and "Book" label are intentionally English-
-    // only for now since they're typographic glue rather than translatable
-    // copy; if this proves wrong, wrap with tr().
-    char buf[160];
+    // Series name on its own line, "Book N" stacked below it. Combining them
+    // on a single line was clipping the index off the right edge for any
+    // series with a long name (e.g. "The Empyrean · Book 2" → "The Empyrean
+    // · Book…"). Stacking is also closer to the visual hierarchy a reader
+    // expects: the *series* is the broader frame, the *index* sits inside it.
+    // Both lines are italic to read as one typographic block, distinct from
+    // the author line above.
+    const std::string seriesLine =
+        renderer.truncatedText(UI_10_FONT_ID, book.seriesName.c_str(), metaWidth, EpdFontFamily::ITALIC);
+    renderer.drawText(UI_10_FONT_ID, metaX, textY, seriesLine.c_str(), /*black=*/true, EpdFontFamily::ITALIC);
+    textY += authorLineHeight + 2;
+
     if (!book.seriesIndex.empty()) {
-      std::snprintf(buf, sizeof(buf), "%s · Book %s", book.seriesName.c_str(), book.seriesIndex.c_str());
+      char bookBuf[32];
+      std::snprintf(bookBuf, sizeof(bookBuf), "Book %s", book.seriesIndex.c_str());
+      const std::string bookLine =
+          renderer.truncatedText(UI_10_FONT_ID, bookBuf, metaWidth, EpdFontFamily::ITALIC);
+      renderer.drawText(UI_10_FONT_ID, metaX, textY, bookLine.c_str(), /*black=*/true, EpdFontFamily::ITALIC);
+      textY += authorLineHeight + 10;
     } else {
-      std::snprintf(buf, sizeof(buf), "%s", book.seriesName.c_str());
+      textY += 8;
     }
-    const std::string seriesLine = renderer.truncatedText(UI_10_FONT_ID, buf, metaWidth, EpdFontFamily::ITALIC);
-    renderer.drawText(UI_10_FONT_ID, metaX, textY, seriesLine.c_str(), true, EpdFontFamily::ITALIC);
-    textY += authorLineHeight + 8;
   } else {
     textY += 8;
   }
 
-  if (progressPercent >= 0) {
-    // Drop the progress ring into the empty space below the title/author so
-    // the right column doesn't sit half-empty. The ring is sized to the
-    // smaller of the column width and the remaining vertical room, with a
-    // small inset so it never collides with the cover edge or the hero
-    // border.
-    constexpr int kRingMargin = 8;
-    const int availableHeight = (coverRect.y + coverRect.height) - textY - kRingMargin;
-    const int availableWidth = metaWidth - kRingMargin * 2;
-    int diameter = std::min(availableWidth, availableHeight);
-    if (diameter > 0) {
-      // Cap the visual size so big screens don't produce an absurdly thick
-      // donut; the cover is the visual anchor, not the progress indicator.
-      diameter = std::min(diameter, 180);
-      const int outerR = diameter / 2;
-      const int cx = metaX + metaWidth / 2;
-      const int cy = textY + (availableHeight) / 2;
-
-      drawProgressRing(renderer, cx, cy, outerR, kRingThickness, progressPercent);
-
-      if (progressPercent >= 100) {
-        // Finished books read better as a glanceable check than the digits
-        // "100%". The ring outline still communicates "this book has a
-        // completion state", and the check inside replaces the percent label.
-        const int innerR = std::max(0, outerR - kRingThickness);
-        drawCheckmark(renderer, cx, cy, innerR);
-      } else {
-        // Centered percent label inside the ring.
-        char percentStr[8];
-        std::snprintf(percentStr, sizeof(percentStr), "%d%%", static_cast<int>(progressPercent));
-        const int labelWidth = renderer.getTextWidth(BOOKERLY_18_FONT_ID, percentStr, EpdFontFamily::BOLD);
-        const int labelHeight = renderer.getLineHeight(BOOKERLY_18_FONT_ID);
-        renderer.drawText(BOOKERLY_18_FONT_ID, cx - labelWidth / 2, cy - labelHeight / 2 - 2, percentStr, true,
-                          EpdFontFamily::BOLD);
-      }
-    }
+  if (progressPercent < 0) {
+    return;
   }
+
+  // Linear progress bar -- replaces the circular ring (POLISH-HERO).
+  // Less ink, less ghosting risk on E-ink, and (most importantly) leaves room
+  // for the secondary "time-left" line below that answers "should I crack
+  // this open right now?".
+  constexpr int kBarHeight = 10;
+  constexpr int kLabelGapPx = 8;
+  const int clampedPct = (progressPercent > 100) ? 100 : static_cast<int>(progressPercent);
+  char percentStr[8];
+  std::snprintf(percentStr, sizeof(percentStr), "%d%%", clampedPct);
+  const int labelW = renderer.getTextWidth(UI_10_FONT_ID, percentStr, EpdFontFamily::BOLD);
+  const int barW = std::max(0, metaWidth - labelW - kLabelGapPx);
+
+  // Keep the bar / time-left block inside the hero band; if the title wrapped
+  // to two lines on a particularly tall font, fall back to the cover bottom
+  // rather than overflowing onto the divider below.
+  const int heroBottom = coverRect.y + coverRect.height - 4;
+  if (textY + kBarHeight > heroBottom) {
+    return;
+  }
+
+  const int barY = textY;
+  if (barW > 0) {
+    renderer.drawRect(metaX, barY, barW, kBarHeight);
+    const int filledW = (barW - 2) * clampedPct / 100;
+    if (filledW > 0) {
+      renderer.fillRect(metaX + 1, barY + 1, filledW, kBarHeight - 2, /*state=*/true);
+    }
+    const int labelTextY = barY + (kBarHeight - renderer.getLineHeight(UI_10_FONT_ID)) / 2 - 1;
+    renderer.drawText(UI_10_FONT_ID, metaX + barW + kLabelGapPx, labelTextY, percentStr, /*black=*/true,
+                      EpdFontFamily::BOLD);
+  }
+  textY = barY + kBarHeight + 8;
+
+  // Time-left block, drawn as two stacked lines so each fact reads cleanly
+  // at a glance: "~Xh left" answers "how much more?" and "Yh read" answers
+  // "how invested am I already?". Only shown when (a) the user has put real
+  // time into this book, and (b) it isn't already finished. The pace
+  // estimate is intentionally per-book (not a global average) so a slow
+  // re-read of a technical tome reports more remaining time than a sprint
+  // through a beach-read of the same length.
+  if (clampedPct <= 0 || clampedPct >= 100) {
+    return;
+  }
+  const BookStatEntry* stat = findStatsByPath(book.path);
+  if (!stat || stat->totalReadingMs == 0) {
+    return;
+  }
+  const uint32_t remainingPct = 100u - static_cast<uint32_t>(clampedPct);
+  const uint64_t remainingMs =
+      static_cast<uint64_t>(stat->totalReadingMs) * remainingPct / static_cast<uint32_t>(clampedPct);
+
+  char leftBuf[32];
+  formatTimeApprox(leftBuf, sizeof(leftBuf), remainingMs);
+  char readBuf[32];
+  formatTimeApprox(readBuf, sizeof(readBuf), stat->totalReadingMs);
+
+  const int timeLineH = renderer.getLineHeight(UI_10_FONT_ID);
+  if (textY + timeLineH > heroBottom) {
+    return;
+  }
+  char leftLine[48];
+  std::snprintf(leftLine, sizeof(leftLine), "%s left", leftBuf);
+  const std::string leftTrunc = renderer.truncatedText(UI_10_FONT_ID, leftLine, metaWidth);
+  renderer.drawText(UI_10_FONT_ID, metaX, textY, leftTrunc.c_str());
+  textY += timeLineH + 2;
+
+  if (textY + timeLineH > heroBottom) {
+    return;
+  }
+  char readLine[48];
+  std::snprintf(readLine, sizeof(readLine), "%s read", readBuf);
+  const std::string readTrunc = renderer.truncatedText(UI_10_FONT_ID, readLine, metaWidth);
+  renderer.drawText(UI_10_FONT_ID, metaX, textY, readTrunc.c_str());
 }
 
 void drawHeroEmpty(GfxRenderer& renderer, const Rect& rect) {
@@ -362,8 +397,7 @@ void drawThumbnailRow(GfxRenderer& renderer, const Rect& rect, const std::vector
     const Rect thumbRect = getThumbnailRect(rect, i, count);
     const int ghostDepth = std::min(2, tile.stackSize - 1);
     drawBackStack(renderer, thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height, ghostDepth);
-    drawCover(renderer, thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height, *tile.book,
-              kThumbnailCoverHeight);
+    drawCover(renderer, thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height, *tile.book, kThumbnailCoverHeight);
 
     if (tile.stackSize > 1) {
       // Series tile: replace the per-book progress ribbon with a round
@@ -386,8 +420,7 @@ void drawThumbnailRow(GfxRenderer& renderer, const Rect& rect, const std::vector
 }
 
 void drawBottomMenu(GfxRenderer& renderer, const Rect& rect) {
-  const char* labels[kMenuTilesCount] = {tr(STR_FILES), tr(STR_STATS_TITLE), tr(STR_TRANSFER),
-                                          tr(STR_SETTINGS_TITLE)};
+  const char* labels[kMenuTilesCount] = {tr(STR_FILES), tr(STR_STATS_TITLE), tr(STR_TRANSFER), tr(STR_SETTINGS_TITLE)};
 
   // Top-only rounded corners, matching the side button hints on the file
   // browser page (see LyraTheme::drawSideButtonHints).
@@ -419,10 +452,10 @@ void drawSelectionBorder(GfxRenderer& renderer, const Rect& inner, bool rTL, boo
   // Concentric rounded outlines that follow the host tile's corner shape.
   // 6 px matches the corner radius used by drawBottomMenu.
   constexpr int kCornerRadius = 6;
-  renderer.drawRoundedRect(inner.x - 2, inner.y - 2, inner.width + 4, inner.height + 4, 1, kCornerRadius, rTL, rTR,
-                           rBL, rBR, true);
-  renderer.drawRoundedRect(inner.x - 3, inner.y - 3, inner.width + 6, inner.height + 6, 1, kCornerRadius, rTL, rTR,
-                           rBL, rBR, true);
+  renderer.drawRoundedRect(inner.x - 2, inner.y - 2, inner.width + 4, inner.height + 4, 1, kCornerRadius, rTL, rTR, rBL,
+                           rBR, true);
+  renderer.drawRoundedRect(inner.x - 3, inner.y - 3, inner.width + 6, inner.height + 6, 1, kCornerRadius, rTL, rTR, rBL,
+                           rBR, true);
 }
 
 Rect getHeroCoverRect(const Rect& heroRect) {
