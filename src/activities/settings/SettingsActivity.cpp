@@ -8,7 +8,6 @@
 #include "ClearCacheActivity.h"
 #include "CrossPointSettings.h"
 #include "KOReaderSettingsActivity.h"
-#include "LanguageSelectActivity.h"
 #include "MappedInputManager.h"
 #include "OtaUpdateActivity.h"
 #include "SettingsList.h"
@@ -53,7 +52,9 @@ void SettingsActivity::onEnter() {
   systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_BROWSER, SettingAction::OPDSBrowser));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language));
+  // Language selector removed in 1.2.0 — firmware ships English-only. The LanguageSelectActivity
+  // class is left in place for now in case multi-lang support returns; the dead-code-elimination
+  // pass removes it from the binary since no reachable code references it.
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
 
   // Reset selection to first category
@@ -190,9 +191,6 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::CheckForUpdates:
         startActivityForResult(std::make_unique<OtaUpdateActivity>(renderer, mappedInput), resultHandler);
-        break;
-      case SettingAction::Language:
-        startActivityForResult(std::make_unique<LanguageSelectActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::FileTransfer:
         startActivityForResult(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput), resultHandler);

@@ -4,35 +4,21 @@
 #include <array>
 
 #include "HyphenationCommon.h"
-#include "generated/hyph-de.trie.h"
 #include "generated/hyph-en.trie.h"
-#include "generated/hyph-es.trie.h"
-#include "generated/hyph-fr.trie.h"
-#include "generated/hyph-it.trie.h"
-#include "generated/hyph-ru.trie.h"
-#include "generated/hyph-uk.trie.h"
+
+// English-only build. Non-English trie tables (de/fr/ru/es/it/uk) were dropped in 1.2.0 to
+// reclaim ~270KB of flash. EPUBs in other languages render fine; they just skip hyphenation
+// (the rest of ParsedText's layout machinery handles language-less fallback breaking).
 
 namespace {
 
 // English hyphenation patterns (3/3 minimum prefix/suffix length)
 LanguageHyphenator englishHyphenator(en_patterns, isLatinLetter, toLowerLatin, 3, 3);
-LanguageHyphenator frenchHyphenator(fr_patterns, isLatinLetter, toLowerLatin);
-LanguageHyphenator germanHyphenator(de_patterns, isLatinLetter, toLowerLatin);
-LanguageHyphenator russianHyphenator(ru_patterns, isCyrillicLetter, toLowerCyrillic);
-LanguageHyphenator spanishHyphenator(es_patterns, isLatinLetter, toLowerLatin);
-LanguageHyphenator italianHyphenator(it_patterns, isLatinLetter, toLowerLatin);
-LanguageHyphenator ukrainianHyphenator(uk_patterns, isCyrillicLetter, toLowerCyrillic);
 
-using EntryArray = std::array<LanguageEntry, 7>;
+using EntryArray = std::array<LanguageEntry, 1>;
 
 const EntryArray& entries() {
-  static const EntryArray kEntries = {{{"english", "en", &englishHyphenator},
-                                       {"french", "fr", &frenchHyphenator},
-                                       {"german", "de", &germanHyphenator},
-                                       {"russian", "ru", &russianHyphenator},
-                                       {"spanish", "es", &spanishHyphenator},
-                                       {"italian", "it", &italianHyphenator},
-                                       {"ukrainian", "uk", &ukrainianHyphenator}}};
+  static const EntryArray kEntries = {{{"english", "en", &englishHyphenator}}};
   return kEntries;
 }
 

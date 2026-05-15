@@ -793,7 +793,11 @@ void HomeActivity::render(RenderLock&&) {
 
   if (coverBufferStored && restoreCoverBuffer()) {
     HomeRenderer::drawSelectionBorder(renderer, focusedItemRect(), roundTopOnly, roundTopOnly, false, false);
-    renderer.displayBuffer();
+    // FAST_REFRESH for selection-border moves — incremental update, no black flash. HALF mode
+    // does a full clear-then-redraw cycle that flashes the panel black; FAST mode only writes
+    // changed pixels (~50-100ms). Mild ghosting on the selection rectangle is acceptable for
+    // arrow-key navigation. First render + re-entry from a sub-activity use FULL_REFRESH.
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
     return;
   }
 

@@ -96,8 +96,10 @@ class CrossPointSettings {
   // Swapped: Next, Previous
   enum SIDE_BUTTON_LAYOUT { PREV_NEXT = 0, NEXT_PREV = 1, SIDE_BUTTON_LAYOUT_COUNT };
 
-  // Font family options
-  enum FONT_FAMILY { BOOKERLY = 0, NOTOSANS = 1, OPENDYSLEXIC = 2, FONT_FAMILY_COUNT };
+  // Font family options. OpenDyslexic was removed in 1.2.0 to reclaim ~800KB of flash for
+  // future features. Users on OpenDyslexic auto-migrate to Bookerly via JsonSettingsIO's
+  // ENUM clamp (value 2 >= enumValues.size() == 2 -> defaults back to BOOKERLY).
+  enum FONT_FAMILY { BOOKERLY = 0, NOTOSANS = 1, FONT_FAMILY_COUNT };
   // Font size options
   enum FONT_SIZE { EXTRA_SMALL = 0, SMALL = 1, MEDIUM = 2, LARGE = 3, EXTRA_LARGE = 4, FONT_SIZE_COUNT };
   enum LINE_COMPRESSION { TIGHT = 0, NORMAL = 1, WIDE = 2, LINE_COMPRESSION_COUNT };
