@@ -60,29 +60,18 @@ void drawLyraBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidt
 
   const bool charging = gpio.isUsbConnected();
 
-  // macOS-style proportional fill: a single solid bar whose width tracks the
-  // remaining charge. Replaces the previous 3-segment indicator so users get
-  // ~5% resolution instead of 4 discrete states (and so the visual matches
-  // BaseTheme across themes).
   const int maxFillWidth = battWidth - 5;
   const int fillHeight = rectHeight - 4;
-  if (maxFillWidth > 0 && fillHeight > 0) {
-    int filledWidth = percentage * maxFillWidth / 100 + 1;
-    if (filledWidth > maxFillWidth) {
-      filledWidth = maxFillWidth;
-    }
-    // Charging always shows a bolt, so guarantee enough fill behind it for the
-    // glyph to remain legible even at 0%.
-    constexpr int minFillForBolt = 8;
-    if (charging && filledWidth < minFillForBolt) {
-      filledWidth = std::min(minFillForBolt, maxFillWidth);
-    }
-    renderer.fillRect(x + 2, y + 2, filledWidth, fillHeight);
+  if (maxFillWidth <= 0 || fillHeight <= 0) {
+    return;
   }
 
   if (charging) {
-    const int boltX = x + 4;
-    const int boltY = y + 2;
+    // Plugged in: solid black body + centred bolt. Matches BaseTheme so the
+    // charging state looks identical across skins.
+    renderer.fillRect(x + 2, y + 2, maxFillWidth, fillHeight);
+    const int boltX = x + (battWidth - 8) / 2;
+    const int boltY = y + 2 + (rectHeight - 12) / 2;
     renderer.drawLine(boltX + 4, boltY + 0, boltX + 5, boltY + 0, false);
     renderer.drawLine(boltX + 3, boltY + 1, boltX + 4, boltY + 1, false);
     renderer.drawLine(boltX + 2, boltY + 2, boltX + 5, boltY + 2, false);
@@ -91,7 +80,16 @@ void drawLyraBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidt
     renderer.drawLine(boltX + 1, boltY + 5, boltX + 4, boltY + 5, false);
     renderer.drawLine(boltX + 2, boltY + 6, boltX + 3, boltY + 6, false);
     renderer.drawLine(boltX + 1, boltY + 7, boltX + 2, boltY + 7, false);
+    return;
   }
+
+  // macOS-style proportional fill: a single solid bar whose width tracks the
+  // remaining charge. The +1 rounds up so even 1% shows a pixel.
+  int filledWidth = percentage * maxFillWidth / 100 + 1;
+  if (filledWidth > maxFillWidth) {
+    filledWidth = maxFillWidth;
+  }
+  renderer.fillRect(x + 2, y + 2, filledWidth, fillHeight);
 }
 
 const uint8_t* iconForName(UIIcon icon, int size) {

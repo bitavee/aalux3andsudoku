@@ -37,29 +37,19 @@ void drawBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidth, i
 
   const bool charging = gpio.isUsbConnected();
 
-  // The +1 is to round up, so that we always fill at least one pixel
   const int maxFillWidth = battWidth - 5;
   const int fillHeight = rectHeight - 4;
   if (maxFillWidth <= 0 || fillHeight <= 0) {
     return;
   }
-  int filledWidth = percentage * maxFillWidth / 100 + 1;
-  if (filledWidth > maxFillWidth) {
-    filledWidth = maxFillWidth;
-  }
 
-  // When charging, ensure minimum fill so lightning bolt is fully visible
-  constexpr int minFillForBolt = 8;
-  if (charging && filledWidth < minFillForBolt) {
-    filledWidth = std::min(minFillForBolt, maxFillWidth);
-  }
-
-  renderer.fillRect(x + 2, y + 2, filledWidth, fillHeight);
-
-  // Draw lightning bolt when charging (white/inverted on black fill for visibility)
   if (charging) {
-    const int boltX = x + 4;
-    const int boltY = y + 2;
+    // Plugged in: fill the whole body solid black and put a centred white bolt
+    // on top so the charging state reads as a clean icon, not a partial bar.
+    renderer.fillRect(x + 2, y + 2, maxFillWidth, fillHeight);
+    // Bolt is 5 px wide × 8 px tall. Centre it inside the body rect.
+    const int boltX = x + (battWidth - 8) / 2;
+    const int boltY = y + 2 + (rectHeight - 12) / 2;
     renderer.drawLine(boltX + 4, boltY + 0, boltX + 5, boltY + 0, false);
     renderer.drawLine(boltX + 3, boltY + 1, boltX + 4, boltY + 1, false);
     renderer.drawLine(boltX + 2, boltY + 2, boltX + 5, boltY + 2, false);
@@ -68,7 +58,15 @@ void drawBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidth, i
     renderer.drawLine(boltX + 1, boltY + 5, boltX + 4, boltY + 5, false);
     renderer.drawLine(boltX + 2, boltY + 6, boltX + 3, boltY + 6, false);
     renderer.drawLine(boltX + 1, boltY + 7, boltX + 2, boltY + 7, false);
+    return;
   }
+
+  // The +1 is to round up, so that we always fill at least one pixel.
+  int filledWidth = percentage * maxFillWidth / 100 + 1;
+  if (filledWidth > maxFillWidth) {
+    filledWidth = maxFillWidth;
+  }
+  renderer.fillRect(x + 2, y + 2, filledWidth, fillHeight);
 }
 }  // namespace
 
