@@ -142,7 +142,12 @@ void HomeActivity::loadRecentBooks(int max) {
   std::vector<int> persistIndices;
   for (const RecentBook& book : books) {
     if (static_cast<int>(recentBooks.size()) >= max) break;
-    if (!Storage.exists(book.path.c_str())) continue;
+    // Per-book Storage.exists() check removed in 1.2.0 — it cost ~5-10ms per book (~50-90ms
+    // total on a 9-book recents list) on every home entry just to filter out books the user
+    // deleted from the SD card while not on home. The RecentBooks store is authoritative; if
+    // a book is gone, file ops downstream (cover load, reader open) fail gracefully into
+    // their existing placeholder paths. Worst case: a dead tile sits there until the user
+    // selects it, gets a load error, and the entry is cleaned up.
 
     RecentBook entry = book;
     if (entry.seriesName.empty() && FsHelpers::hasEpubExtension(entry.path)) {

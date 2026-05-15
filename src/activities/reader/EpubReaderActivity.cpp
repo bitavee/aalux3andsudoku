@@ -218,6 +218,13 @@ void EpubReaderActivity::loop() {
       restoreSavedPosition();
       return;
     }
+    // Instant feedback: the reader -> home transition takes ~700ms+ (reader onExit, home
+    // onEnter cover/progress loading, full e-ink refresh). Without this popup the screen
+    // stays on the last reader page for that full duration and the device feels frozen.
+    // FAST_REFRESH paints the popup in ~50ms with no black flash; the subsequent home
+    // render does its own FULL_REFRESH so ghosting clears.
+    GUI.drawPopup(renderer, tr(STR_GOING_HOME));
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
     onGoHome();
     return;
   }
