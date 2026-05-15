@@ -80,6 +80,13 @@ void drawBottomMenu(GfxRenderer& renderer, const Rect& rect);
 void drawSelectionBorder(GfxRenderer& renderer, const Rect& inner, bool roundTopLeft = false,
                          bool roundTopRight = false, bool roundBottomLeft = false, bool roundBottomRight = false);
 
+// Linear progress bar with 1px chamfered corners so it reads as "rounded"
+// without needing per-pixel curve math or a second drawing primitive. Shared
+// across hero, boot resume card, and stats list so the indicator looks the
+// same wherever it shows up. `percent` is clamped to [0,100]; pass <0 to draw
+// just the empty outline.
+void drawRoundedProgressBar(GfxRenderer& renderer, int x, int y, int width, int height, int8_t percent);
+
 // Geometry helpers - the activity uses these to figure out where the focused
 // element actually sits on screen so it can call drawSelectionBorder.
 Rect getHeroCoverRect(const Rect& heroRect);

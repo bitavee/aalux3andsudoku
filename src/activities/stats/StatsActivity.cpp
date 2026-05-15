@@ -402,14 +402,14 @@ void StatsActivity::renderBookRow(int rowX, int rowY, int rowW, int rowH, const 
   const int pctX = textX + barW + 10;
 
   if (barW > 10) {
-    renderer.drawRect(textX, barY, barW, barH, 1, true);
-    if (book.progressPercent > 0) {
-      const int fillW = (barW * book.progressPercent) / 100;
-      renderer.fillRect(textX, barY, fillW, barH, true);
-    }
+    HomeRenderer::drawRoundedProgressBar(renderer, textX, barY, barW, barH,
+                                         static_cast<int8_t>(book.progressPercent));
     char bufPct[6];
     snprintf(bufPct, sizeof(bufPct), "%u%%", static_cast<unsigned>(book.progressPercent));
-    renderer.drawText(UI_10_FONT_ID, pctX, line2Y, bufPct, true);
+    // Vertically centre the label on the bar (same trick as the home hero) so
+    // the percent text doesn't float above the rounded ends.
+    const int pctY = barY + (barH - renderer.getLineHeight(UI_10_FONT_ID)) / 2 - 1;
+    renderer.drawText(UI_10_FONT_ID, pctX, pctY, bufPct, true);
   }
 
   // Line 3 — Time Spent (UI_10)

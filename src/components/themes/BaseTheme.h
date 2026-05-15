@@ -70,8 +70,8 @@ enum UIIcon { Folder, Text, Image, Book, File, Recent, Settings, Transfer, Libra
 // Additional themes can inherit from this and override methods as needed
 
 namespace BaseMetrics {
-constexpr ThemeMetrics values = {.batteryWidth = 15,
-                                 .batteryHeight = 12,
+constexpr ThemeMetrics values = {.batteryWidth = 28,
+                                 .batteryHeight = 14,
                                  .topPadding = 5,
                                  .batteryBarHeight = 20,
                                  .headerHeight = 45,

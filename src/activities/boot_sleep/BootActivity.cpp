@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "RecentBooksStore.h"
+#include "components/HomeRenderer.h"  // drawRoundedProgressBar — shared with home hero and stats list for a consistent indicator
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/Logo120.h"
@@ -191,11 +192,7 @@ void BootActivity::renderResumingCard(GfxRenderer& renderer, const RecentBook& b
     const int labelW = renderer.getTextWidth(UI_10_FONT_ID, percentStr, EpdFontFamily::BOLD);
     const int barW = metaW - labelW - kLabelGap;
     if (barW > 0) {
-      renderer.drawRect(metaX, textY, barW, kBarHeight);
-      const int filledW = (barW - 2) * clampedPct / 100;
-      if (filledW > 0) {
-        renderer.fillRect(metaX + 1, textY + 1, filledW, kBarHeight - 2, /*state=*/true);
-      }
+      HomeRenderer::drawRoundedProgressBar(renderer, metaX, textY, barW, kBarHeight, static_cast<int8_t>(clampedPct));
       const int labelTextY = textY + (kBarHeight - renderer.getLineHeight(UI_10_FONT_ID)) / 2 - 1;
       renderer.drawText(UI_10_FONT_ID, metaX + barW + kLabelGap, labelTextY, percentStr, /*black=*/true,
                         EpdFontFamily::BOLD);

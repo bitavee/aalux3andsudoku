@@ -6,6 +6,7 @@
 #include <I18n.h>
 #include <Logging.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -263,11 +264,7 @@ void drawHero(GfxRenderer& renderer, const Rect& rect, const RecentBook& book, i
 
   const int barY = textY;
   if (barW > 0) {
-    renderer.drawRect(metaX, barY, barW, kBarHeight);
-    const int filledW = (barW - 2) * clampedPct / 100;
-    if (filledW > 0) {
-      renderer.fillRect(metaX + 1, barY + 1, filledW, kBarHeight - 2, /*state=*/true);
-    }
+    drawRoundedProgressBar(renderer, metaX, barY, barW, kBarHeight, static_cast<int8_t>(clampedPct));
     const int labelTextY = barY + (kBarHeight - renderer.getLineHeight(UI_10_FONT_ID)) / 2 - 1;
     renderer.drawText(UI_10_FONT_ID, metaX + barW + kLabelGapPx, labelTextY, percentStr, /*black=*/true,
                       EpdFontFamily::BOLD);
@@ -456,6 +453,37 @@ void drawSelectionBorder(GfxRenderer& renderer, const Rect& inner, bool rTL, boo
                            rBR, true);
   renderer.drawRoundedRect(inner.x - 3, inner.y - 3, inner.width + 6, inner.height + 6, 1, kCornerRadius, rTL, rTR, rBL,
                            rBR, true);
+}
+
+void drawRoundedProgressBar(GfxRenderer& renderer, int x, int y, int width, int height, int8_t percent) {
+  if (width <= 0 || height <= 0) return;
+  // Pill-ish look on a 8-10 px tall bar lands around r=2/3. Cap at half the
+  // smaller side so very short bars don't degenerate into a circle.
+  const int radius = std::min({3, width / 2, height / 2});
+
+  renderer.drawRoundedRect(x, y, width, height, 1, radius, true);
+
+  if (percent < 0) return;
+  const int clamped = percent > 100 ? 100 : static_cast<int>(percent);
+  const int innerW = width - 2;
+  const int innerH = height - 2;
+  if (innerW <= 0 || innerH <= 0) return;
+
+  const int fillW = innerW * clamped / 100;
+  if (fillW <= 0) return;
+
+  // Inner fill radius is one less than the outline radius so the filled pixels
+  // sit just inside the rounded border without leaving a visible white seam.
+  const int fillRadius = std::max(0, radius - 1);
+  if (fillW >= innerW) {
+    renderer.fillRoundedRect(x + 1, y + 1, innerW, innerH, fillRadius, Color::Black);
+  } else {
+    // Partial fill: round only the leading (left) corners; the trailing edge
+    // butts against the unfilled portion and reads cleaner as a straight cut.
+    renderer.fillRoundedRect(x + 1, y + 1, fillW, innerH, fillRadius,
+                             /*roundTopLeft=*/true, /*roundTopRight=*/false,
+                             /*roundBottomLeft=*/true, /*roundBottomRight=*/false, Color::Black);
+  }
 }
 
 Rect getHeroCoverRect(const Rect& heroRect) {

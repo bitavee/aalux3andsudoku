@@ -6,6 +6,7 @@
 #include <HalStorage.h>
 #include <I18n.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -59,15 +60,24 @@ void drawLyraBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidt
 
   const bool charging = gpio.isUsbConnected();
 
-  // Draw bars
-  if (percentage > 10 || charging) {
-    renderer.fillRect(x + 2, y + 2, 3, rectHeight - 4);
-  }
-  if (percentage > 40 || charging) {
-    renderer.fillRect(x + 6, y + 2, 3, rectHeight - 4);
-  }
-  if (percentage > 70) {
-    renderer.fillRect(x + 10, y + 2, 3, rectHeight - 4);
+  // macOS-style proportional fill: a single solid bar whose width tracks the
+  // remaining charge. Replaces the previous 3-segment indicator so users get
+  // ~5% resolution instead of 4 discrete states (and so the visual matches
+  // BaseTheme across themes).
+  const int maxFillWidth = battWidth - 5;
+  const int fillHeight = rectHeight - 4;
+  if (maxFillWidth > 0 && fillHeight > 0) {
+    int filledWidth = percentage * maxFillWidth / 100 + 1;
+    if (filledWidth > maxFillWidth) {
+      filledWidth = maxFillWidth;
+    }
+    // Charging always shows a bolt, so guarantee enough fill behind it for the
+    // glyph to remain legible even at 0%.
+    constexpr int minFillForBolt = 8;
+    if (charging && filledWidth < minFillForBolt) {
+      filledWidth = std::min(minFillForBolt, maxFillWidth);
+    }
+    renderer.fillRect(x + 2, y + 2, filledWidth, fillHeight);
   }
 
   if (charging) {
