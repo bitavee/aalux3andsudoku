@@ -4,6 +4,10 @@
 #include <Logging.h>
 #include <Serialization.h>
 
+#include <cstring>
+
+#include "../BionicReading.h"
+
 void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {
   // Validate iterator bounds before rendering
   if (words.size() != wordXpos.size() || words.size() != wordStyles.size()) {
@@ -15,7 +19,23 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
   for (size_t i = 0; i < words.size(); i++) {
     const int wordX = wordXpos[i] + x;
     const EpdFontFamily::Style currentStyle = wordStyles[i];
-    renderer.drawText(fontId, wordX, y, words[i].c_str(), true, currentStyle);
+    const char* const wordStr = words[i].c_str();
+    const size_t wordLen = words[i].size();
+
+    // Bionic Reading: bold the prefix, draw the suffix in the original style. Falls through to
+    // a single drawText when the helper returns 0 (word too short / disabled).
+    const size_t split = BionicReading::enabled ? BionicReading::prefixByteLength(wordStr, wordLen) : 0;
+    if (split > 0 && split < wordLen && split < 24) {
+      const auto boldStyle = static_cast<EpdFontFamily::Style>(currentStyle | EpdFontFamily::BOLD);
+      char prefixBuf[24];
+      memcpy(prefixBuf, wordStr, split);
+      prefixBuf[split] = '\0';
+      renderer.drawText(fontId, wordX, y, prefixBuf, true, boldStyle);
+      const int prefixWidth = renderer.getTextAdvanceX(fontId, prefixBuf, boldStyle);
+      renderer.drawText(fontId, wordX + prefixWidth, y, wordStr + split, true, currentStyle);
+    } else {
+      renderer.drawText(fontId, wordX, y, wordStr, true, currentStyle);
+    }
 
     if ((currentStyle & EpdFontFamily::UNDERLINE) != 0) {
       const std::string& w = words[i];

@@ -1,5 +1,6 @@
 #include "EpubReaderActivity.h"
 
+#include <Epub/BionicReading.h>
 #include <Epub/Page.h>
 #include <Epub/blocks/TextBlock.h>
 #include <FontCacheManager.h>
@@ -633,6 +634,11 @@ void EpubReaderActivity::render(RenderLock&& lock) {
   if (!epub) {
     return;
   }
+
+  // Publish the bionic-reading flag for TextBlock::render — set once per top-level render so
+  // every subsequent page->render call in this method (BW scan, BW emit, grayscale LSB/MSB)
+  // sees the current setting without paying for parameter plumbing.
+  BionicReading::enabled = SETTINGS.bionicReading;
 
   if (qsState != QuickSettingsState::CLOSED && !qsNeedsBackgroundRender) {
     renderQuickSettingsOverlay();

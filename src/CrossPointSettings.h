@@ -180,6 +180,10 @@ class CrossPointSettings {
   // E-ink refresh frequency (default 15 pages)
   uint8_t refreshFrequency = REFRESH_15;
   uint8_t hyphenationEnabled = 0;
+  // Bionic Reading render mode: draws the first N characters of each word in BOLD
+  // to create fixation points. Layout-affecting (changes word widths), so changes
+  // invalidate the section cache.
+  uint8_t bionicReading = 0;
 
   // Reader screen margin settings
   uint8_t screenMargin = 5;

@@ -93,6 +93,73 @@ PlatformIO is BOTH a VS Code extension AND a CLI tool.
 | `gh_release_rc` | Release candidate | 1 | RC builds |
 | `slim` | Minimal build | — | No serial logging |
 
+### Flash budget — the 6,553,600 byte ceiling (HARD LIMIT, **do NOT cross**)
+
+Each OTA app slot (`app0`, `app1` in `partitions.csv`) is **0x640000 = 6,553,600 bytes**. The `.bin` size the flasher writes is what the bootloader checks at boot. If it exceeds 6,553,600 bytes, the bootloader rejects it with:
+
+```
+E (1049) esp_image: Image length <N> doesn't fit in partition length 6553600
+E (1049) boot: OTA app partition slot 0 is not bootable
+E (1062) boot: No bootable app partitions in the partition table
+```
+
+…and the device enters a **boot loop** that looks like a freeze to the user. There is no panic backtrace, no display output, no recovery — only the bootloader keeps resetting. The only way out is to reflash a smaller image over USB.
+
+**Rules when modifying this codebase**:
+
+1. **Never push the `default` env image over 6,553,600 bytes.** The `default` env is already near the limit (~33 KB headroom vs `gh_release`) because `LOG_LEVEL=2` keeps all `LOG_DBG` strings in flash. Even a 200-byte feature can push it over.
+2. **After every change, check `pio run` output**: the `Total image size: N bytes` line is the relevant number, **NOT** the "Flash X% used" stat (which reports `.text+.data+.rodata` only and is misleading). `wc -c .pio/build/default/firmware.bin` is the definitive ground truth — the bootloader's "Image length" matches this value.
+3. **Treat 6,553,344 bytes as the soft ceiling** (256-byte safety margin for future micro-additions).
+4. **If a feature won't fit in `default`**: either (a) make it smaller, (b) move some `LOG_DBG` calls behind `#if LOG_LEVEL >= 3` so they only ship in a yet-slimmer dev variant, or (c) verify it fits in `gh_release` (which has ~33 KB headroom) and test against that env. **Never bump the OTA partition** without explicit user approval — it changes the layout for everyone and breaks OTA upgrades from older firmware.
+
+### Debugging a "frozen device" report
+
+When the user says "the device froze after I flashed" — *capture serial first, diagnose second.* The freeze rarely means the application hung; it usually means the bootloader couldn't load the app at all.
+
+```bash
+# 1. Confirm the port (macOS)
+ls /dev/cu.usbmodem*
+
+# 2. Capture ~8 seconds of bootloader output WITHOUT flashing anything (the device is already cycling)
+python3 -c "
+import serial, time, sys
+ser = serial.Serial('/dev/cu.usbmodem2101', 115200, timeout=2)
+end = time.time() + 8
+data = b''
+while time.time() < end:
+    chunk = ser.read(4096)
+    if chunk: data += chunk
+ser.close()
+sys.stdout.write(data.decode('utf-8', errors='replace'))
+"
+
+# 3. Or use the enhanced monitor (decodes panic backtraces)
+python3 scripts/debugging_monitor.py /dev/cu.usbmodem2101
+```
+
+**Decoding the boot log — common signatures**:
+
+| Pattern in serial output | Meaning | Fix |
+|---|---|---|
+| `Image length N doesn't fit in partition length 6553600` | `.bin` too big for OTA slot | Reduce code size or use a slimmer env (see Flash budget above) |
+| `No bootable app partitions in the partition table` (looping) | Both OTA slots failed validation | Reflash a known-good `.bin` over USB |
+| `Guru Meditation Error: ... LoadProhibited` / `StoreProhibited` | Null pointer or freed memory access | Decode backtrace with `debugging_monitor.py`; check `onExit` cleanup |
+| `Stack canary watchpoint triggered (TaskName)` | Stack overflow in the named task | Increase that task's stack size; move large locals to heap |
+| `Task watchdog got triggered. CPU 0: TaskName` | Task ran >5 s without yielding | Add `vTaskDelay(1)` in tight loops; chunk long parsing work |
+| `Brownout detector was triggered` | Voltage sag, often during e-ink refresh under low battery | Check battery; not a code issue |
+| `rst:0x3 (RTC_SW_SYS_RST)` repeating without a panic message | Watchdog or assertion-driven reset early in boot | Check `HalSystem::checkPanic` log; reduce `setupDisplayAndFonts` work |
+| Hex `0x4080xxxx` addresses in a backtrace | Code addresses — feed to `debugging_monitor.py` to symbolicate |
+| Serial silent / no output at all | USB CDC not ready yet, OR device crashed before `Serial.begin()` | Pull `RST` low briefly; ensure `ARDUINO_USB_CDC_ON_BOOT=1` is set |
+
+**Investigation workflow**:
+
+1. **First**, look for `esp_image: Image length` → if present, it's a flash-size problem, do not touch code logic — shrink the image instead.
+2. **Second**, look for `Guru Meditation` / `panic` → real crash; capture the full backtrace and find the offending function.
+3. **Third**, look for repeated `rst:0x3` without a panic message → silent reset; suspect watchdog, brownout, or assertion firing before logs are flushed.
+4. Only after the bootloader output is understood, look at application logs (lines prefixed with `[NNNN]   ...`).
+
+**Never guess at a frozen-device cause without serial output.** The Bionic Reading freeze (2026-05-15) was diagnosed in under a minute once the bootloader log was captured — versus a long session of speculative edits before that.
+
 ### Critical Build Flags
 These flags fundamentally shape firmware behaviour. Do not change them lightly.
 

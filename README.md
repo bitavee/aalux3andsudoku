@@ -53,6 +53,7 @@ Everything below is on top of what Seek Reader / CrossPoint already do.
 
 ### Reader experience
 - **In-reader Quick Settings overlay (Aa)** — fonts, sizes, margins, line spacing, layout — all adjusted *over* the book text. No full-screen settings round-trip, no flash hammering (writes are deferred), no E-ink ghosting.
+- **Bionic Reading mode** — bolds the first few characters of each word to create fixation points that guide the eye through text. Toggle from the Aa overlay; works with any installed font family (Bookerly, Noto Sans, OpenDyslexic). Pure render-time effect — toggling does not invalidate the section cache, so flipping it back and forth is instant.
 - **Offline English dictionary** — pixel-perfect word selection from EPUB text, StarDict format, Levenshtein-based "did you mean?" suggestions, memory-safe lookup history. *(Drop `dictionary.dict` and `dictionary.idx` onto the SD card — sample files in [`English-Dictionary/`](./English-Dictionary).)*
 - **KOReader sync** — heuristic paragraph-level synchronization that fixes chapter drift and avoids crashing remote-device XML parsers.
 
