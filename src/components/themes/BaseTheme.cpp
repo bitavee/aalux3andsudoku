@@ -47,17 +47,32 @@ void drawBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidth, i
     // Plugged in: fill the whole body solid black and put a centred white bolt
     // on top so the charging state reads as a clean icon, not a partial bar.
     renderer.fillRect(x + 2, y + 2, maxFillWidth, fillHeight);
-    // Bolt is 5 px wide × 8 px tall. Centre it inside the body rect.
-    const int boltX = x + (battWidth - 8) / 2;
-    const int boltY = y + 2 + (rectHeight - 12) / 2;
-    renderer.drawLine(boltX + 4, boltY + 0, boltX + 5, boltY + 0, false);
-    renderer.drawLine(boltX + 3, boltY + 1, boltX + 4, boltY + 1, false);
-    renderer.drawLine(boltX + 2, boltY + 2, boltX + 5, boltY + 2, false);
-    renderer.drawLine(boltX + 3, boltY + 3, boltX + 4, boltY + 3, false);
-    renderer.drawLine(boltX + 2, boltY + 4, boltX + 3, boltY + 4, false);
-    renderer.drawLine(boltX + 1, boltY + 5, boltX + 4, boltY + 5, false);
-    renderer.drawLine(boltX + 2, boltY + 6, boltX + 3, boltY + 6, false);
-    renderer.drawLine(boltX + 1, boltY + 7, boltX + 2, boltY + 7, false);
+    // Horizontal lightning bolt: 18 px wide × 7 px tall. Spans almost the full battery body
+    // (~80%) so the orientation reads unambiguously. Two 2-px-thick horizontal strokes meet
+    // at a 3-step stepped diagonal kink — the universal "Z-bolt" shape used on power adapters
+    // and EV charging plugs.
+    // Layout (X = white pixel on the black battery body):
+    //   X X X X X X X X . . . .  . . . . . .       ← upper stroke (top, 2 px thick)
+    //   X X X X X X X X . . . .  . . . . . .
+    //   . . . . . . X X X X . .  . . . . . .       ← stepped diagonal kink
+    //   . . . . . . . X X X X .  . . . . . .
+    //   . . . . . . . . X X X X  . . . . . .
+    //   . . . . . . . . . . X X  X X X X X X       ← lower stroke (bottom, 2 px thick)
+    //   . . . . . . . . . . X X  X X X X X X
+    constexpr int kBoltW = 18;
+    constexpr int kBoltH = 7;
+    const int boltX = x + (battWidth - kBoltW) / 2;
+    const int boltY = y + (rectHeight - kBoltH) / 2;
+    // Upper stroke (rows 0-1)
+    renderer.drawLine(boltX + 0, boltY + 0, boltX + 7, boltY + 0, false);
+    renderer.drawLine(boltX + 0, boltY + 1, boltX + 7, boltY + 1, false);
+    // Stepped diagonal kink (rows 2-4)
+    renderer.drawLine(boltX + 6, boltY + 2, boltX + 9, boltY + 2, false);
+    renderer.drawLine(boltX + 7, boltY + 3, boltX + 10, boltY + 3, false);
+    renderer.drawLine(boltX + 8, boltY + 4, boltX + 11, boltY + 4, false);
+    // Lower stroke (rows 5-6)
+    renderer.drawLine(boltX + 10, boltY + 5, boltX + 17, boltY + 5, false);
+    renderer.drawLine(boltX + 10, boltY + 6, boltX + 17, boltY + 6, false);
     return;
   }
 
