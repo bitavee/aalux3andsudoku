@@ -8,10 +8,10 @@ AALU is a custom firmware for the Xteink X4 e-paper reader, built for people who
 
 ## Screenshots
 
-| Home | Series viewer |
-| :---: | :---: |
-| ![Home screen — current read with progress ring, recent-reads grid with series-count badges, and the bottom menu](./docs/images/screenshots/home.jpeg) | ![Series viewer — all books in a series shown in reading order](./docs/images/screenshots/series-viewer.jpeg) |
-| Hero book with a circular progress ring, "Recent Reads" grid with series-count badges, and the bottom menu (Files / Statistics / Transfer / Settings). | Drill-in series viewer reached from any stack tile — every member of the series shown in reading order. |
+| Home | Reading | Series viewer |
+| :---: | :---: | :---: |
+| ![Home screen — current read with progress bar, library grid with series-count badges, and the bottom menu](./docs/images/screenshots/home.jpeg) | ![Reading view — chapter heading, body text, and a footer with battery, chapter name, page count, and progress](./docs/images/screenshots/reading.jpeg) | ![Series viewer — all books in a series shown in reading order](./docs/images/screenshots/series-viewer.jpeg) |
+| Hero book with a progress bar, time-left and time-read readouts, "Library" grid with series-count badges, and the bottom menu (Files / Statistics / Transfer / Settings). | In-book reading view with chapter title, body text, and a footer that shows battery, current chapter, page in chapter, and overall progress. | Drill-in series viewer reached from any stack tile — every member of the series shown in reading order. |
 
 ---
 
