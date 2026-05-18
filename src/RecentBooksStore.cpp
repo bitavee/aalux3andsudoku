@@ -92,8 +92,8 @@ RecentBook RecentBooksStore::getDataFromBook(std::string path) const {
   if (FsHelpers::hasEpubExtension(lastBookFileName)) {
     Epub epub(path, "/.crosspoint");
     epub.load(false, true);
-    return RecentBook{path, epub.getTitle(), epub.getAuthor(), epub.getThumbBmpPath(),
-                      epub.getSeriesName(), epub.getSeriesIndex()};
+    return RecentBook{
+        path, epub.getTitle(), epub.getAuthor(), epub.getThumbBmpPath(), epub.getSeriesName(), epub.getSeriesIndex()};
   } else if (FsHelpers::hasXtcExtension(lastBookFileName)) {
     // Handle XTC file. XTC has no series metadata of its own.
     Xtc xtc(path, "/.crosspoint");

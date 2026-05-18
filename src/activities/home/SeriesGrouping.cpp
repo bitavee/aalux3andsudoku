@@ -333,8 +333,8 @@ std::vector<RecentBook> discoverSeriesMembers(std::vector<RecentBook> seedBooks,
     emitProgress(renderer, popupRect, processed, totalCandidates);
   }
 
-  LOG_DBG("SDISC", "Series discovery: total=%d candidates=%d cap=%d", static_cast<int>(result.size()),
-          totalCandidates, maxBooks);
+  LOG_DBG("SDISC", "Series discovery: total=%d candidates=%d cap=%d", static_cast<int>(result.size()), totalCandidates,
+          maxBooks);
 
   // Persist the count so the home thumbnail badge can show the real total
   // even before the user re-opens the viewer.

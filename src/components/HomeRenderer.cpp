@@ -227,8 +227,7 @@ void drawHero(GfxRenderer& renderer, const Rect& rect, const RecentBook& book, i
     if (!book.seriesIndex.empty()) {
       char bookBuf[32];
       std::snprintf(bookBuf, sizeof(bookBuf), "Book %s", book.seriesIndex.c_str());
-      const std::string bookLine =
-          renderer.truncatedText(UI_10_FONT_ID, bookBuf, metaWidth, EpdFontFamily::ITALIC);
+      const std::string bookLine = renderer.truncatedText(UI_10_FONT_ID, bookBuf, metaWidth, EpdFontFamily::ITALIC);
       renderer.drawText(UI_10_FONT_ID, metaX, textY, bookLine.c_str(), /*black=*/true, EpdFontFamily::ITALIC);
       textY += authorLineHeight + 10;
     } else {

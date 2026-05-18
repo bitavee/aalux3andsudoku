@@ -209,7 +209,8 @@ bool HomeProgressCache::loadProgressFor(const std::string& path) {
   if (bookSize == 0) {
     return false;
   }
-  const size_t prevChapterSize = (currentSpineIndex >= 1) ? cache.getSpineEntry(currentSpineIndex - 1).cumulativeSize : 0;
+  const size_t prevChapterSize =
+      (currentSpineIndex >= 1) ? cache.getSpineEntry(currentSpineIndex - 1).cumulativeSize : 0;
 
   int percent;
   if (resolveEndOfBook(spineCount)) {

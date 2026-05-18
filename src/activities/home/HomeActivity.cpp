@@ -32,13 +32,13 @@ constexpr int kThumbsPerRow = 4;
 // stack containing many books, and the drill-in viewer needs every member
 // to be present. Display tile count is enforced separately at render time.
 constexpr int kMaxHomeRecents = 0x7FFFFFFF;  // effectively no cap
-constexpr int kHeroPaddingTop = 50;       // hero starts immediately under header
+constexpr int kHeroPaddingTop = 50;          // hero starts immediately under header
 // Section break holds the double-line divider with the "Recent Reads" label
 // sandwiched between the two rules. The two rows hug 12 px apart with a small
 // breath above the menu. 50 + 300 + 64 + 150 + 12 + 150 + 14 + 60 = 800.
 constexpr int kHeroBottomGap = 64;
 constexpr int kRowGap = 12;
-constexpr int kMenuPaddingBottom = 0;     // menu tiles glued to the bottom edge
+constexpr int kMenuPaddingBottom = 0;  // menu tiles glued to the bottom edge
 // Approximate UI_12 line height; used to centre the label vertically between
 // the two divider rules (which sit at gap/2 ± kHalfSeparation = 18 px).
 constexpr int kSectionLabelHeight = 18;
@@ -752,8 +752,7 @@ void HomeActivity::renderFull() {
   // is rect.y+5 inside drawHeader, and its percentage text uses SMALL_FONT
   // at that rect's y). Bold for prominence.
   GUI.drawHeader(renderer, headerRect, nullptr);
-  renderer.drawCenteredText(SMALL_FONT_ID, headerRect.y + 5, tr(STR_AALU_READER), /*black=*/true,
-                            EpdFontFamily::BOLD);
+  renderer.drawCenteredText(SMALL_FONT_ID, headerRect.y + 5, tr(STR_AALU_READER), /*black=*/true, EpdFontFamily::BOLD);
 
   if (tiles.empty()) {
     HomeRenderer::drawHeroEmpty(renderer, heroRect());

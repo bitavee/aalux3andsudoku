@@ -21,9 +21,9 @@
 #include "MappedInputManager.h"
 #include "QrDisplayActivity.h"
 #include "ReaderUtils.h"
+#include "RecentBooksStore.h"
 #include "components/HomeProgressCache.h"
 #include "components/HomeRenderer.h"  // for kHeroCoverHeight / kThumbnailCoverHeight
-#include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "stats/ReadingStatsManager.h"  // added when developing Statistics menu
@@ -839,13 +839,10 @@ void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
   // last chapter: chapter-start there is ~99%, but the user has finished
   // the book and home should show 100%, so we override.
   const int spineCount = epub->getSpineItemsCount();
-  const bool atEndOfBook = (spineCount > 0 && currentSpineIndex == spineCount - 1 && pageCount > 0 &&
-                            currentPage >= pageCount - 1);
-  const int percent = atEndOfBook
-                          ? 100
-                          : static_cast<int>(epub->calculateProgress(currentSpineIndex, 0.0f) * 100.0f);
-  HomeProgressCache::getInstance().recordProgress(epub->getPath(), currentSpineIndex,
-                                                  static_cast<int8_t>(percent));
+  const bool atEndOfBook =
+      (spineCount > 0 && currentSpineIndex == spineCount - 1 && pageCount > 0 && currentPage >= pageCount - 1);
+  const int percent = atEndOfBook ? 100 : static_cast<int>(epub->calculateProgress(currentSpineIndex, 0.0f) * 100.0f);
+  HomeProgressCache::getInstance().recordProgress(epub->getPath(), currentSpineIndex, static_cast<int8_t>(percent));
 }
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                         const int orientedMarginRight, const int orientedMarginBottom,

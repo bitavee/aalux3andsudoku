@@ -797,18 +797,35 @@ DO NOT commit when:
 ## Testing and Verification Workflow
 
 ### MANDATORY after every code change
-Before declaring a task complete, proposing a commit, or handing off to the user, run:
+Before declaring a task complete, proposing a commit, or handing off to the user, run **all four** of these — in this order. They mirror what CI runs on `master`, so green locally = green in CI = release workflow fires.
 
 ```bash
-# 1. Build (default env)
+# 1. Format check — must produce no diff, exactly what the `clang-format` CI job runs.
+#    Requires clang-format-21 on PATH. On macOS: `brew install llvm@21` then
+#    `PATH="/opt/homebrew/opt/llvm@21/bin:$PATH"` (or persist it in your shell).
+./bin/clang-format-fix
+git diff --exit-code   # MUST be clean. If not, the formatter changed files — stage them.
+
+# 2. Static analysis — matches the `cppcheck` CI job.
+pio check --fail-on-defect medium --fail-on-defect high
+
+# 3. Build (default env) — matches the `build` CI job.
 pio run
 
-# 2. Host tests — these compile + run on macOS/Linux, no device required
+# 4. Host tests — compile + run on macOS/Linux, no device required.
 bash test/run_differential_rounding_test.sh
 bash test/run_hyphenation_eval.sh
 ```
 
-If `pio run` warns or errors, fix it — do not paper over warnings. If a host test fails, treat it as blocking. If your change touches a path covered by neither test (most UI work), say so explicitly when reporting status.
+Rules:
+- All four must pass. Do NOT declare a task complete, propose a commit, or hand off until they're all green.
+- If `pio run` warns or errors, fix it — do not paper over warnings.
+- If a host test fails, treat it as blocking.
+- If `git diff --exit-code` fails after `clang-format-fix`, the formatter rewrote files; include those changes in your commit.
+- `pio check` is allowed to print `[low:*]` style hints — those are advisory. Only `medium` and `high` defects fail.
+- If your change touches a path covered by neither host test (most UI work), say so explicitly when reporting status.
+
+Skipping any of the four is how `master` ends up red and the Release workflow gets skipped — which is the actual cause when "the release isn't publishing."
 
 ### AI-agent scope (you can verify)
 1. ✅ **Build**: `pio run -t clean && pio run` (0 errors, 0 warnings) — required after every change

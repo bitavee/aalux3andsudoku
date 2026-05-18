@@ -300,8 +300,8 @@ void setup() {
     // fall back to the logo screen so the panel isn't blank while the reader
     // loads.
     const auto& recents = RECENT_BOOKS.getBooks();
-    const auto it = std::find_if(recents.begin(), recents.end(),
-                                 [&path](const RecentBook& b) { return b.path == path; });
+    const auto it =
+        std::find_if(recents.begin(), recents.end(), [&path](const RecentBook& b) { return b.path == path; });
     if (it != recents.end()) {
       int8_t pct = -1;
       for (uint8_t i = 0; i < StatsManager.getBookCount(); ++i) {

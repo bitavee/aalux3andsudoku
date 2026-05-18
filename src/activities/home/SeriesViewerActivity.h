@@ -14,9 +14,7 @@ class SeriesViewerActivity final : public Activity {
  public:
   SeriesViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string seriesTitle,
                        std::vector<RecentBook> books)
-      : Activity("SeriesViewer", renderer, mappedInput),
-        seriesTitle(std::move(seriesTitle)),
-        books(std::move(books)) {}
+      : Activity("SeriesViewer", renderer, mappedInput), seriesTitle(std::move(seriesTitle)), books(std::move(books)) {}
 
   void onEnter() override;
   void loop() override;

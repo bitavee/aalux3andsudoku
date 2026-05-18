@@ -27,9 +27,7 @@ static constexpr int COVER_PAD = 6;
 // (added to the cache but never opened past the cover, or imported from a
 // path that pre-populated metadata). They clutter the list with no useful
 // signal.
-static bool isStatsVisible(const BookStatEntry& book) {
-  return book.progressPercent > 0 && book.totalReadingMs > 0;
-}
+static bool isStatsVisible(const BookStatEntry& book) { return book.progressPercent > 0 && book.totalReadingMs > 0; }
 
 // -----------------------------------------------------------------------
 // Static helpers
@@ -402,8 +400,7 @@ void StatsActivity::renderBookRow(int rowX, int rowY, int rowW, int rowH, const 
   const int pctX = textX + barW + 10;
 
   if (barW > 10) {
-    HomeRenderer::drawRoundedProgressBar(renderer, textX, barY, barW, barH,
-                                         static_cast<int8_t>(book.progressPercent));
+    HomeRenderer::drawRoundedProgressBar(renderer, textX, barY, barW, barH, static_cast<int8_t>(book.progressPercent));
     char bufPct[6];
     snprintf(bufPct, sizeof(bufPct), "%u%%", static_cast<unsigned>(book.progressPercent));
     // Vertically centre the label on the bar (same trick as the home hero) so

@@ -20,9 +20,7 @@ constexpr unsigned long GO_HOME_MS = 1000;
 
 bool isOpdsEntry(const std::string& entry) { return entry == tr(STR_ONLINE_CATALOG); }
 
-bool shouldShowOpdsEntry(const std::string& basepath) {
-  return basepath == "/" && SETTINGS.opdsServerUrl[0] != '\0';
-}
+bool shouldShowOpdsEntry(const std::string& basepath) { return basepath == "/" && SETTINGS.opdsServerUrl[0] != '\0'; }
 }  // namespace
 
 void sortFileList(std::vector<std::string>& strs) {
