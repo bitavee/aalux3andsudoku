@@ -135,6 +135,11 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   }
 
   latestVersion = doc["tag_name"].as<std::string>();
+  // Release tags are prefixed with 'v' (e.g. "v1.1.1") but AALU_VERSION is bare ("1.1.1").
+  // Strip the prefix so equality checks and sscanf parsing work.
+  if (!latestVersion.empty() && (latestVersion.front() == 'v' || latestVersion.front() == 'V')) {
+    latestVersion.erase(0, 1);
+  }
 
   for (int i = 0; i < doc["assets"].size(); i++) {
     if (doc["assets"][i]["name"] == "firmware.bin") {

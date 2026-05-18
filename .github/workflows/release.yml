@@ -1,15 +1,59 @@
-name: Compile Release
+name: Release
+
 on:
-  push:
-    tags:
-      - '*'
+  workflow_run:
+    workflows: ["CI (build)"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
+  check-version:
+    # On workflow_run, only proceed if CI succeeded. workflow_dispatch always runs.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Detect version bump
+        id: check
+        run: |
+          VERSION=$(awk '/^\[aalu\]/{flag=1; next} /^\[/{flag=0} flag && /^version[[:space:]]*=/{print $NF; exit}' platformio.ini)
+          echo "Current version: '$VERSION'"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$VERSION" ]; then
+            echo "No [aalu] version found in platformio.ini"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git rev-parse --verify --quiet "refs/tags/v$VERSION" >/dev/null; then
+            echo "Tag v$VERSION already exists — release already published, skipping"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "No tag v$VERSION yet — releasing"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+
   build-release:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: master
           submodules: recursive
 
       - uses: actions/setup-python@v6
@@ -28,13 +72,11 @@ jobs:
       - name: Build AALU
         run: pio run -e gh_release
 
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: AALU-${{ github.ref_name }}
-          path: |
-            .pio/build/gh_release/bootloader.bin
-            .pio/build/gh_release/firmware.bin
-            .pio/build/gh_release/firmware.elf
-            .pio/build/gh_release/firmware.map
-            .pio/build/gh_release/partitions.bin
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: AALU v${{ needs.check-version.outputs.version }}
+          target_commitish: master
+          generate_release_notes: true
+          files: .pio/build/gh_release/firmware.bin
