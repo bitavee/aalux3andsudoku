@@ -270,13 +270,14 @@ void drawHero(GfxRenderer& renderer, const Rect& rect, const RecentBook& book, i
   }
   textY = barY + kBarHeight + 8;
 
-  // Time-left block, drawn as two stacked lines so each fact reads cleanly
-  // at a glance: "~Xh left" answers "how much more?" and "Yh read" answers
-  // "how invested am I already?". Only shown when (a) the user has put real
-  // time into this book, and (b) it isn't already finished. The pace
-  // estimate is intentionally per-book (not a global average) so a slow
-  // re-read of a technical tome reports more remaining time than a sprint
-  // through a beach-read of the same length.
+  // Time block rendered as two side-by-side columns: TIME READ (how invested
+  // am I already?) on the left, EST. LEFT (how much more?) on the right.
+  // Label above, value below — the labels read as small caps so the eye
+  // parses them as section headers, not as another line of book metadata.
+  // Only shown when (a) the user has put real time into this book, and (b)
+  // it isn't already finished. The pace estimate is per-book (not a global
+  // average) so a slow re-read of a technical tome reports more remaining
+  // time than a sprint through a beach-read of the same length.
   if (clampedPct <= 0 || clampedPct >= 100) {
     return;
   }
@@ -288,28 +289,35 @@ void drawHero(GfxRenderer& renderer, const Rect& rect, const RecentBook& book, i
   const uint64_t remainingMs =
       static_cast<uint64_t>(stat->totalReadingMs) * remainingPct / static_cast<uint32_t>(clampedPct);
 
-  char leftBuf[32];
-  formatTimeApprox(leftBuf, sizeof(leftBuf), remainingMs);
   char readBuf[32];
   formatTimeApprox(readBuf, sizeof(readBuf), stat->totalReadingMs);
+  char leftBuf[40];
+  {
+    char raw[32];
+    formatTimeApprox(raw, sizeof(raw), remainingMs);
+    std::snprintf(leftBuf, sizeof(leftBuf), "~%s", raw);
+  }
 
-  const int timeLineH = renderer.getLineHeight(UI_10_FONT_ID);
-  if (textY + timeLineH > heroBottom) {
+  const int labelLineH = renderer.getLineHeight(UI_10_FONT_ID);
+  const int valueLineH = renderer.getLineHeight(UI_10_FONT_ID);
+  if (textY + labelLineH + valueLineH + 2 > heroBottom) {
     return;
   }
-  char leftLine[48];
-  std::snprintf(leftLine, sizeof(leftLine), "%s left", leftBuf);
-  const std::string leftTrunc = renderer.truncatedText(UI_10_FONT_ID, leftLine, metaWidth);
-  renderer.drawText(UI_10_FONT_ID, metaX, textY, leftTrunc.c_str());
-  textY += timeLineH + 2;
 
-  if (textY + timeLineH > heroBottom) {
-    return;
-  }
-  char readLine[48];
-  std::snprintf(readLine, sizeof(readLine), "%s read", readBuf);
-  const std::string readTrunc = renderer.truncatedText(UI_10_FONT_ID, readLine, metaWidth);
-  renderer.drawText(UI_10_FONT_ID, metaX, textY, readTrunc.c_str());
+  const int colWidth = metaWidth / 2;
+  const int col1X = metaX;
+  const int col2X = metaX + colWidth;
+  const int valueY = textY + labelLineH + 2;
+
+  const std::string timeReadLabel = renderer.truncatedText(UI_10_FONT_ID, tr(STR_HERO_TIME_READ), colWidth);
+  renderer.drawText(UI_10_FONT_ID, col1X, textY, timeReadLabel.c_str(), /*black=*/true, EpdFontFamily::BOLD);
+  const std::string readVal = renderer.truncatedText(UI_10_FONT_ID, readBuf, colWidth);
+  renderer.drawText(UI_10_FONT_ID, col1X, valueY, readVal.c_str());
+
+  const std::string estLeftLabel = renderer.truncatedText(UI_10_FONT_ID, tr(STR_HERO_EST_LEFT), colWidth);
+  renderer.drawText(UI_10_FONT_ID, col2X, textY, estLeftLabel.c_str(), /*black=*/true, EpdFontFamily::BOLD);
+  const std::string leftVal = renderer.truncatedText(UI_10_FONT_ID, leftBuf, colWidth);
+  renderer.drawText(UI_10_FONT_ID, col2X, valueY, leftVal.c_str());
 }
 
 void drawHeroEmpty(GfxRenderer& renderer, const Rect& rect) {
