@@ -23,15 +23,23 @@ namespace HomeRenderer {
 // Constant heights used by HomeActivity to lay out rows. Kept here so the
 // activity and the renderer cannot drift apart.
 constexpr int kHeroHeight = 300;
-constexpr int kThumbnailRowHeight = 150;
-constexpr int kBottomMenuHeight = 60;
+// Single row of 3 bigger covers replaces the old 4x2 grid. The row band
+// includes the cover (210 px) plus a one-line title slot below it.
+constexpr int kThumbnailRowHeight = 230;
+// Bottom menu grew from a text-only strip to icon-over-label tiles, so it
+// needs more vertical room.
+constexpr int kBottomMenuHeight = 80;
 constexpr int kDividerHeight = 1;
+// Button-hint band sits below the bottom menu. Shows four glyphs matching
+// the physical buttons (back, confirm, up, down) so the user has a constant
+// reminder of what each key does from the home screen.
+constexpr int kButtonHintsHeight = 30;
 
 // Heights at which cover thumbnails should be cached. Used both at render time
 // (to look up the BMP via UITheme::getCoverThumbPath) and at preload time (so
 // HomeActivity can call epub.generateThumbBmp() with matching sizes).
 constexpr int kHeroCoverHeight = 300;
-constexpr int kThumbnailCoverHeight = 150;
+constexpr int kThumbnailCoverHeight = 210;
 
 // Each row draw fn renders only the *unselected* state so that the activity
 // can store the framebuffer once, then on every focus change just restore the
@@ -70,7 +78,20 @@ void drawSectionLabel(GfxRenderer& renderer, const Rect& rect);
 void drawThumbnailRow(GfxRenderer& renderer, const Rect& rect, const std::vector<ThumbTileView>& tiles);
 
 // Bottom menu: 3 fixed tiles (Browse, Stats, Settings), all unselected.
+// Tiles are borderless; the band is framed by a horizontal rule at its top
+// edge and another at its bottom edge to match the screenshots.
 void drawBottomMenu(GfxRenderer& renderer, const Rect& rect);
+
+// Overlay-only: paints the focused menu tile as a solid black pill with the
+// label rendered in white (icon is suppressed). Drawn on top of the cached
+// framebuffer so the underlying icon+label is hidden by the fill -- callers
+// do not need to repaint the whole menu band on focus moves.
+void drawMenuSelection(GfxRenderer& renderer, const Rect& menuRect, int selectedIndex);
+
+// Bottom button-hint band: four glyphs (left-arrow, ball, up-arrow, down-arrow)
+// matching the physical buttons. Drawn just below the menu so the user always
+// has a reminder of what each key does on the home screen.
+void drawBottomButtonHints(GfxRenderer& renderer, const Rect& rect);
 
 // Draws a 2-pixel double border around `inner` to mark focus. Inner should be
 // the rect of the focused element (cover / thumbnail / menu tile). The four

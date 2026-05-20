@@ -16,6 +16,8 @@
 #include "RecentBooksStore.h"
 #include "components/HomeProgressCache.h"
 #include "components/UITheme.h"
+#include "components/icons/library.h"
+#include "components/icons/settings2.h"
 #include "components/themes/BaseTheme.h"
 #include "fontIds.h"
 #include "stats/ReadingStatsManager.h"
@@ -26,14 +28,25 @@ constexpr int kHeroPadding = 20;
 constexpr int kHeroCoverWidth = 200;
 constexpr int kHeroMetaGap = 20;
 
-constexpr int kThumbWidth = 100;
-constexpr int kThumbHeight = 150;
-constexpr int kThumbGap = 16;
-constexpr int kThumbsCount = 4;
+// One row of 3 bigger covers replaces the old 4-up grid. Width chosen so
+// 3 * 140 + 2 * 20 = 460, leaving 10 px breathing room on each side of the
+// 480 px portrait viewport. The cover is the 2:3 portion (140x210) and a
+// short one-line title slot sits below it inside the same tile rect.
+constexpr int kThumbWidth = 140;
+constexpr int kThumbTitleGap = 6;
+constexpr int kThumbTitleHeight = 14;
+constexpr int kThumbHeight = HomeRenderer::kThumbnailCoverHeight + kThumbTitleGap + kThumbTitleHeight;
+constexpr int kThumbGap = 20;
+constexpr int kThumbsCount = 3;
 
 constexpr int kMenuPadding = 16;
 constexpr int kMenuGap = 8;
 constexpr int kMenuTilesCount = 4;
+// Icon box sits above the label inside each bottom menu tile. Sized at 32 px
+// so the crosspet bitmap icons (LibraryIcon, Settings2Icon) blit 1:1 without
+// scaling; the procedural Stats/Transfer icons scale to fit.
+constexpr int kMenuIconSize = 32;
+constexpr int kMenuIconLabelGap = 6;
 
 // Draws 0..2 "ghost" book outlines back-up-right of the primary cover so a
 // series stack reads as a Kindle-style pile. Each ghost is drawn before the
@@ -150,6 +163,45 @@ void formatTimeApprox(char* buf, size_t len, uint64_t ms) {
   } else {
     std::snprintf(buf, len, "<1m");
   }
+}
+
+// --- Bottom menu icons -------------------------------------------------------
+// Files (case 0) and Settings (case 3) use the crosspet bitmap icons
+// (LibraryIcon / Settings2Icon, 32x32) via drawIcon. Stats and Transfer are
+// drawn procedurally inside the same 32x32 box so we don't pay the flash cost
+// of bundling more bitmaps for those.
+
+static void drawStatsIcon(const GfxRenderer& renderer, int x, int y, int size) {
+  // Three vertical bars of increasing height (classic bar-chart icon).
+  const int barW = (size - 4) / 3;
+  const int gap = 1;
+  const int baseY = y + size - 2;
+  const int h1 = size / 3;
+  const int h2 = (size * 2) / 3;
+  const int h3 = size - 2;
+  // Baseline
+  renderer.drawLine(x, baseY, x + size, baseY, 1, true);
+  renderer.fillRect(x + 1, baseY - h1, barW, h1, true);
+  renderer.fillRect(x + 1 + barW + gap, baseY - h2, barW, h2, true);
+  renderer.fillRect(x + 1 + 2 * (barW + gap), baseY - h3, barW, h3, true);
+}
+
+static void drawTransferIcon(const GfxRenderer& renderer, int x, int y, int size) {
+  // Down-arrow into a tray -- reads as "import / download to device".
+  const int cx = x + size / 2;
+  // Arrow shaft
+  renderer.fillRect(cx - 2, y + 2, 4, size - 12, true);
+  // Arrow head (triangle pointing down)
+  const int headTop = y + size - 12;
+  const int headBottom = y + size - 6;
+  const int headHalf = 6;
+  const int xPts[3] = {cx - headHalf, cx + headHalf, cx};
+  const int yPts[3] = {headTop, headTop, headBottom};
+  renderer.fillPolygon(xPts, yPts, 3, true);
+  // Tray under the arrow
+  renderer.drawLine(x + 1, y + size - 2, x + size - 1, y + size - 2, 2, true);
+  renderer.drawLine(x + 1, y + size - 4, x + 1, y + size - 2, 1, true);
+  renderer.drawLine(x + size - 1, y + size - 4, x + size - 1, y + size - 2, 1, true);
 }
 
 // Looks up the stats entry for `book` by exact bookPath match. ReadingStatsManager
@@ -393,15 +445,41 @@ static void drawProgressBadge(const GfxRenderer& renderer, int x, int y, int wid
   renderer.drawText(SMALL_FONT_ID, textX, textY, buf, /*black=*/false);
 }
 
+// Extracts the displayable label for a thumb tile. For a single-book tile we
+// show the book's title; for a series stack we show the series name, falling
+// back to the parent folder basename when the EPUB metadata didn't carry a
+// real series label (matches the same fallback HomeActivity::buildTiles uses
+// to *group* the stack in the first place).
+static std::string thumbLabelFor(const ThumbTileView& tile) {
+  if (!tile.book) return {};
+  if (tile.stackSize > 1) {
+    if (!tile.book->seriesName.empty()) {
+      return tile.book->seriesName;
+    }
+    // Parent folder basename fallback. The path is "/dir/sub/Book.epub";
+    // return "sub". Empty string is fine -- the title slot just stays blank.
+    const std::string& path = tile.book->path;
+    const auto lastSlash = path.find_last_of('/');
+    if (lastSlash == std::string::npos || lastSlash == 0) return {};
+    const auto prevSlash = path.find_last_of('/', lastSlash - 1);
+    if (prevSlash == std::string::npos) {
+      return path.substr(0, lastSlash);
+    }
+    return path.substr(prevSlash + 1, lastSlash - prevSlash - 1);
+  }
+  return tile.book->title;
+}
+
 void drawThumbnailRow(GfxRenderer& renderer, const Rect& rect, const std::vector<ThumbTileView>& tiles) {
   const int count = static_cast<int>(tiles.size());
   for (int i = 0; i < count && i < kThumbsCount; ++i) {
     const ThumbTileView& tile = tiles[i];
     if (!tile.book) continue;
     const Rect thumbRect = getThumbnailRect(rect, i, count);
+    const int coverH = kThumbnailCoverHeight;
     const int ghostDepth = std::min(2, tile.stackSize - 1);
-    drawBackStack(renderer, thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height, ghostDepth);
-    drawCover(renderer, thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height, *tile.book, kThumbnailCoverHeight);
+    drawBackStack(renderer, thumbRect.x, thumbRect.y, thumbRect.width, coverH, ghostDepth);
+    drawCover(renderer, thumbRect.x, thumbRect.y, thumbRect.width, coverH, *tile.book, kThumbnailCoverHeight);
 
     if (tile.stackSize > 1) {
       // Series tile: replace the per-book progress ribbon with a round
@@ -417,8 +495,19 @@ void drawThumbnailRow(GfxRenderer& renderer, const Rect& rect, const std::vector
       // with "0%" ribbons that carry no information; the absence of a badge
       // is itself the "not started" signal.
       if (percent > 0) {
-        drawProgressBadge(renderer, thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height, percent);
+        drawProgressBadge(renderer, thumbRect.x, thumbRect.y, thumbRect.width, coverH, percent);
       }
+    }
+
+    // Title (or series name) below the cover. Single line, truncated with an
+    // ellipsis to the tile width so it never bleeds into a neighbouring tile.
+    const std::string label = thumbLabelFor(tile);
+    if (!label.empty()) {
+      const std::string drawn = renderer.truncatedText(UI_10_FONT_ID, label.c_str(), thumbRect.width);
+      const int labelW = renderer.getTextWidth(UI_10_FONT_ID, drawn.c_str());
+      const int labelX = thumbRect.x + (thumbRect.width - labelW) / 2;
+      const int labelY = thumbRect.y + coverH + kThumbTitleGap;
+      renderer.drawText(UI_10_FONT_ID, labelX, labelY, drawn.c_str());
     }
   }
 }
@@ -426,21 +515,100 @@ void drawThumbnailRow(GfxRenderer& renderer, const Rect& rect, const std::vector
 void drawBottomMenu(GfxRenderer& renderer, const Rect& rect) {
   const char* labels[kMenuTilesCount] = {tr(STR_FILES), tr(STR_STATS_TITLE), tr(STR_TRANSFER), tr(STR_SETTINGS_TITLE)};
 
-  // Top-only rounded corners, matching the side button hints on the file
-  // browser page (see LyraTheme::drawSideButtonHints).
-  constexpr int kCornerRadius = 6;
+  // Horizontal rules framing the menu band, inset to the same horizontal
+  // bounds as the menu tiles and the thumbnail row. Matches the crosspet
+  // reference screenshots ("two lines on top and bottom of the menu").
+  const int lineX1 = rect.x + kMenuPadding;
+  const int lineX2 = rect.x + rect.width - kMenuPadding;
+  renderer.drawLine(lineX1, rect.y, lineX2, rect.y);
+  renderer.drawLine(lineX1, rect.y + rect.height - 1, lineX2, rect.y + rect.height - 1);
 
   for (int i = 0; i < kMenuTilesCount; ++i) {
     const Rect tile = getMenuTileRect(rect, i);
-    renderer.drawRoundedRect(tile.x, tile.y, tile.width, tile.height, 1, kCornerRadius,
-                             /*roundTopLeft=*/true, /*roundTopRight=*/true,
-                             /*roundBottomLeft=*/false, /*roundBottomRight=*/false, true);
+
+    // Icon block, centred horizontally above the label. No tile outline -- the
+    // band is framed by the two horizontal rules above/below.
+    const int iconX = tile.x + (tile.width - kMenuIconSize) / 2;
+    const int textHeight = renderer.getLineHeight(UI_10_FONT_ID);
+    const int contentH = kMenuIconSize + kMenuIconLabelGap + textHeight;
+    const int iconY = tile.y + (tile.height - contentH) / 2;
+    switch (i) {
+      case 0:
+        renderer.drawIcon(LibraryIcon, iconX, iconY, kMenuIconSize, kMenuIconSize);
+        break;
+      case 1:
+        drawStatsIcon(renderer, iconX, iconY, kMenuIconSize);
+        break;
+      case 2:
+        drawTransferIcon(renderer, iconX, iconY, kMenuIconSize);
+        break;
+      case 3:
+        renderer.drawIcon(Settings2Icon, iconX, iconY, kMenuIconSize, kMenuIconSize);
+        break;
+      default:
+        break;
+    }
 
     const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, labels[i]);
-    const int textHeight = renderer.getLineHeight(UI_10_FONT_ID);
     const int textX = tile.x + (tile.width - textWidth) / 2;
-    const int textY = tile.y + (tile.height - textHeight) / 2;
+    const int textY = iconY + kMenuIconSize + kMenuIconLabelGap;
     renderer.drawText(UI_10_FONT_ID, textX, textY, labels[i]);
+  }
+}
+
+void drawMenuSelection(GfxRenderer& renderer, const Rect& menuRect, int selectedIndex) {
+  if (selectedIndex < 0 || selectedIndex >= kMenuTilesCount) return;
+  const char* labels[kMenuTilesCount] = {tr(STR_FILES), tr(STR_STATS_TITLE), tr(STR_TRANSFER), tr(STR_SETTINGS_TITLE)};
+  const Rect tile = getMenuTileRect(menuRect, selectedIndex);
+
+  // Solid black fill -- covers the previously-drawn icon+label so we don't
+  // need to repaint the whole menu band. Rounded corners match the visual
+  // language of the rest of the focus indicators in the home composition.
+  constexpr int kCornerRadius = 6;
+  renderer.fillRoundedRect(tile.x, tile.y, tile.width, tile.height, kCornerRadius, Color::Black);
+
+  // White label centred in the tile -- no icon.
+  const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, labels[selectedIndex]);
+  const int textHeight = renderer.getLineHeight(UI_10_FONT_ID);
+  const int textX = tile.x + (tile.width - textWidth) / 2;
+  const int textY = tile.y + (tile.height - textHeight) / 2;
+  renderer.drawText(UI_10_FONT_ID, textX, textY, labels[selectedIndex], /*black=*/false);
+}
+
+void drawBottomButtonHints(GfxRenderer& renderer, const Rect& rect) {
+  // Four glyphs evenly distributed across the band, mirroring the physical
+  // button order on the device (back, confirm, up, down). Drawn procedurally
+  // -- no font glyphs -- so they read identically across translations.
+  constexpr int kGlyphHalf = 6;  // half-width of triangle / disc radius
+  constexpr int kSlotCount = 4;
+  const int cy = rect.y + rect.height / 2;
+  const int slotWidth = rect.width / kSlotCount;
+
+  // Slot 0: left-pointing triangle (back button).
+  {
+    const int cx = rect.x + slotWidth / 2;
+    const int xPts[3] = {cx - kGlyphHalf, cx + kGlyphHalf, cx + kGlyphHalf};
+    const int yPts[3] = {cy, cy - kGlyphHalf, cy + kGlyphHalf};
+    renderer.fillPolygon(xPts, yPts, 3, true);
+  }
+  // Slot 1: filled disc (confirm / "ball").
+  {
+    const int cx = rect.x + slotWidth + slotWidth / 2;
+    fillDisc(renderer, cx, cy, kGlyphHalf, /*black=*/true);
+  }
+  // Slot 2: up-pointing triangle.
+  {
+    const int cx = rect.x + 2 * slotWidth + slotWidth / 2;
+    const int xPts[3] = {cx - kGlyphHalf, cx + kGlyphHalf, cx};
+    const int yPts[3] = {cy + kGlyphHalf, cy + kGlyphHalf, cy - kGlyphHalf};
+    renderer.fillPolygon(xPts, yPts, 3, true);
+  }
+  // Slot 3: down-pointing triangle.
+  {
+    const int cx = rect.x + 3 * slotWidth + slotWidth / 2;
+    const int xPts[3] = {cx - kGlyphHalf, cx + kGlyphHalf, cx};
+    const int yPts[3] = {cy - kGlyphHalf, cy - kGlyphHalf, cy + kGlyphHalf};
+    renderer.fillPolygon(xPts, yPts, 3, true);
   }
 }
 
@@ -500,7 +668,8 @@ Rect getHeroCoverRect(const Rect& heroRect) {
 Rect getThumbnailRect(const Rect& thumbRowRect, int index, int /*totalCount*/) {
   const int total = (kThumbsCount * kThumbWidth) + ((kThumbsCount - 1) * kThumbGap);
   const int rowX = thumbRowRect.x + (thumbRowRect.width - total) / 2;
-  return Rect{rowX + index * (kThumbWidth + kThumbGap), thumbRowRect.y, kThumbWidth, kThumbHeight};
+  return Rect{rowX + index * (kThumbWidth + kThumbGap), thumbRowRect.y, kThumbWidth,
+              HomeRenderer::kThumbnailCoverHeight};
 }
 
 Rect getMenuTileRect(const Rect& menuRect, int index) {

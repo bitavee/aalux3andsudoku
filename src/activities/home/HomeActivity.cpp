@@ -26,19 +26,19 @@
 #include "components/themes/BaseTheme.h"
 
 namespace {
-constexpr int kThumbsPerRow = 4;
-// The home grid still caps at 1 hero + 8 thumbs (= 9 tiles), but we no
-// longer cap how many *recents* we load: a single tile can be a series
-// stack containing many books, and the drill-in viewer needs every member
-// to be present. Display tile count is enforced separately at render time.
+constexpr int kThumbsPerRow = 3;
+// The home grid caps at 1 hero + 3 thumbs (= 4 tiles), but we no longer cap
+// how many *recents* we load: a single tile can be a series stack containing
+// many books, and the drill-in viewer needs every member to be present.
+// Display tile count is enforced separately at render time.
 constexpr int kMaxHomeRecents = 0x7FFFFFFF;  // effectively no cap
 constexpr int kHeroPaddingTop = 50;          // hero starts immediately under header
 // Section break holds the double-line divider with the "Recent Reads" label
-// sandwiched between the two rules. The two rows hug 12 px apart with a small
-// breath above the menu. 50 + 300 + 64 + 150 + 12 + 150 + 14 + 60 = 800.
-constexpr int kHeroBottomGap = 64;
-constexpr int kRowGap = 12;
-constexpr int kMenuPaddingBottom = 0;  // menu tiles glued to the bottom edge
+// sandwiched between the two rules. The single thumbnail row sits below with
+// breathing room before the menu, and the button-hint band hugs the bottom
+// edge. 50 + 300 + 84 + 230 + 26 + 80 + 30 = 800.
+constexpr int kHeroBottomGap = 84;
+constexpr int kMenuPaddingBottom = 0;  // menu sits directly above the button-hint band
 // Approximate UI_12 line height; used to centre the label vertically between
 // the two divider rules (which sit at gap/2 ± kHalfSeparation = 18 px).
 constexpr int kSectionLabelHeight = 18;
@@ -444,8 +444,6 @@ bool HomeActivity::rowIsFocusable(FocusRow row) const {
       return tileCount > 0;
     case FOCUS_THUMBS_R1:
       return tileCount > 1;
-    case FOCUS_THUMBS_R2:
-      return tileCount > 1 + kThumbsPerRow;
     case FOCUS_MENU:
       return true;
   }
@@ -459,8 +457,6 @@ int HomeActivity::rowItemCount(FocusRow row) const {
       return tileCount > 0 ? 1 : 0;
     case FOCUS_THUMBS_R1:
       return std::min(kThumbsPerRow, std::max(0, tileCount - 1));
-    case FOCUS_THUMBS_R2:
-      return std::min(kThumbsPerRow, std::max(0, tileCount - 1 - kThumbsPerRow));
     case FOCUS_MENU:
       return kMenuItemCount;
   }
@@ -469,10 +465,9 @@ int HomeActivity::rowItemCount(FocusRow row) const {
 
 void HomeActivity::moveFocus(int dRow, int dCol) {
   if (dRow != 0) {
-    constexpr FocusRow rowOrder[] = {FOCUS_HERO, FOCUS_THUMBS_R1, FOCUS_THUMBS_R2, FOCUS_MENU};
+    constexpr FocusRow rowOrder[] = {FOCUS_HERO, FOCUS_THUMBS_R1, FOCUS_MENU};
     constexpr int rowOrderCount = sizeof(rowOrder) / sizeof(rowOrder[0]);
 
-    const int currentCol = focusIndex;
     int currentPos = 0;
     for (int i = 0; i < rowOrderCount; ++i) {
       if (rowOrder[i] == focusRow) {
@@ -486,16 +481,8 @@ void HomeActivity::moveFocus(int dRow, int dCol) {
       const FocusRow candidate = rowOrder[currentPos];
       if (!rowIsFocusable(candidate)) continue;
 
-      // When moving between the two thumbnail rows, keep the column so the
-      // focus rides directly up/down. Otherwise reset to col 0.
-      const bool wasThumbs = (focusRow == FOCUS_THUMBS_R1 || focusRow == FOCUS_THUMBS_R2);
-      const bool isThumbs = (candidate == FOCUS_THUMBS_R1 || candidate == FOCUS_THUMBS_R2);
       focusRow = candidate;
-      if (wasThumbs && isThumbs) {
-        focusIndex = std::min(currentCol, rowItemCount(candidate) - 1);
-      } else {
-        focusIndex = 0;
-      }
+      focusIndex = 0;
       requestUpdate();
       return;
     }
@@ -583,10 +570,7 @@ void HomeActivity::openFocused() {
       openTile(0);
       break;
     case FOCUS_THUMBS_R1:
-      openTile(focusIndex + 1);  // hero = tiles[0], R1 = tiles[1..4]
-      break;
-    case FOCUS_THUMBS_R2:
-      openTile(focusIndex + 1 + kThumbsPerRow);  // R2 = tiles[5..8]
+      openTile(focusIndex + 1);  // hero = tiles[0], R1 = tiles[1..3]
       break;
     case FOCUS_MENU:
       switch (focusIndex) {
@@ -615,9 +599,6 @@ const RecentBook* HomeActivity::focusedSingleBook() const {
       break;
     case FOCUS_THUMBS_R1:
       tileIndex = focusIndex + 1;
-      break;
-    case FOCUS_THUMBS_R2:
-      tileIndex = focusIndex + 1 + kThumbsPerRow;
       break;
     case FOCUS_MENU:
       return nullptr;
@@ -708,16 +689,12 @@ Rect HomeActivity::thumbsRow1Rect() const {
               HomeRenderer::kThumbnailRowHeight};
 }
 
-Rect HomeActivity::thumbsRow2Rect() const {
-  const Rect r1 = thumbsRow1Rect();
-  return Rect{r1.x, r1.y + r1.height + kRowGap, r1.width, HomeRenderer::kThumbnailRowHeight};
-}
-
 Rect HomeActivity::menuRect() const {
   const int pageWidth = renderer.getScreenWidth();
   const int pageHeight = renderer.getScreenHeight();
-  return Rect{0, pageHeight - HomeRenderer::kBottomMenuHeight - kMenuPaddingBottom, pageWidth,
-              HomeRenderer::kBottomMenuHeight};
+  const int menuY =
+      pageHeight - HomeRenderer::kButtonHintsHeight - HomeRenderer::kBottomMenuHeight - kMenuPaddingBottom;
+  return Rect{0, menuY, pageWidth, HomeRenderer::kBottomMenuHeight};
 }
 
 Rect HomeActivity::focusedItemRect() const {
@@ -727,10 +704,6 @@ Rect HomeActivity::focusedItemRect() const {
     case FOCUS_THUMBS_R1: {
       const int count = rowItemCount(FOCUS_THUMBS_R1);
       return HomeRenderer::getThumbnailRect(thumbsRow1Rect(), focusIndex, count);
-    }
-    case FOCUS_THUMBS_R2: {
-      const int count = rowItemCount(FOCUS_THUMBS_R2);
-      return HomeRenderer::getThumbnailRect(thumbsRow2Rect(), focusIndex, count);
     }
     case FOCUS_MENU:
       return HomeRenderer::getMenuTileRect(menuRect(), focusIndex);
@@ -752,7 +725,7 @@ void HomeActivity::renderFull() {
   // is rect.y+5 inside drawHeader, and its percentage text uses SMALL_FONT
   // at that rect's y). Bold for prominence.
   GUI.drawHeader(renderer, headerRect, nullptr);
-  renderer.drawCenteredText(SMALL_FONT_ID, headerRect.y + 5, tr(STR_AALU_READER), /*black=*/true, EpdFontFamily::BOLD);
+  renderer.drawCenteredText(SMALL_FONT_ID, headerRect.y + 5, tr(STR_AALU), /*black=*/true, EpdFontFamily::BOLD);
 
   if (tiles.empty()) {
     HomeRenderer::drawHeroEmpty(renderer, heroRect());
@@ -781,22 +754,30 @@ void HomeActivity::renderFull() {
     };
 
     HomeRenderer::drawThumbnailRow(renderer, thumbsRow1Rect(), buildRow(1));
-
-    if (tiles.size() > static_cast<size_t>(1 + kThumbsPerRow)) {
-      HomeRenderer::drawThumbnailRow(renderer, thumbsRow2Rect(), buildRow(1 + kThumbsPerRow));
-    }
   }
 
   HomeRenderer::drawBottomMenu(renderer, menuRect());
+
+  const Rect menu = menuRect();
+  const Rect buttonHintsRect{0, menu.y + menu.height, renderer.getScreenWidth(), HomeRenderer::kButtonHintsHeight};
+  HomeRenderer::drawBottomButtonHints(renderer, buttonHintsRect);
 }
 
 void HomeActivity::render(RenderLock&&) {
-  // Menu tiles are top-rounded; the focus border should match. Cover and
-  // thumbnail focus stay square since the tiles themselves are rectangular.
-  const bool roundTopOnly = (focusRow == FOCUS_MENU);
+  // Selection overlays: menu rows fill the focused tile with a solid black
+  // pill (label rendered in white, no icon) so it matches the crosspet look.
+  // Hero and thumbnail rows still get a rectangular focus border since those
+  // tiles are larger and a fill would obscure the cover art.
+  auto drawFocus = [&]() {
+    if (focusRow == FOCUS_MENU) {
+      HomeRenderer::drawMenuSelection(renderer, menuRect(), focusIndex);
+    } else {
+      HomeRenderer::drawSelectionBorder(renderer, focusedItemRect());
+    }
+  };
 
   if (coverBufferStored && restoreCoverBuffer()) {
-    HomeRenderer::drawSelectionBorder(renderer, focusedItemRect(), roundTopOnly, roundTopOnly, false, false);
+    drawFocus();
     // FAST_REFRESH for selection-border moves — incremental update, no black flash. HALF mode
     // does a full clear-then-redraw cycle that flashes the panel black; FAST mode only writes
     // changed pixels (~50-100ms). Mild ghosting on the selection rectangle is acceptable for
@@ -817,12 +798,12 @@ void HomeActivity::render(RenderLock&&) {
   // Transfer / WiFi session, where the WebServer + WebSocket + DNS + mDNS
   // teardown leaves total free heap above 48 KB but no contiguous block.
   coverBufferStored = storeCoverBuffer();
-  // ALWAYS draw the selection border, regardless of whether the snapshot
+  // ALWAYS draw the selection overlay, regardless of whether the snapshot
   // succeeded. Previously this was gated by `coverBufferStored`, which
   // meant a fragmented-heap malloc failure made the user's focus
   // disappear from the home grid until reboot. The snapshot is just a
-  // render-perf optimization for the *next* frame; the border itself must
+  // render-perf optimization for the *next* frame; the overlay itself must
   // show on this frame either way.
-  HomeRenderer::drawSelectionBorder(renderer, focusedItemRect(), roundTopOnly, roundTopOnly, false, false);
+  drawFocus();
   renderer.displayBuffer();
 }

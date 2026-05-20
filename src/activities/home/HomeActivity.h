@@ -24,11 +24,10 @@ class HomeActivity final : public Activity {
   enum FocusRow {
     FOCUS_HERO = 0,
     FOCUS_THUMBS_R1 = 1,
-    FOCUS_THUMBS_R2 = 2,
-    FOCUS_MENU = 3,
+    FOCUS_MENU = 2,
   };
 
-  // Up to 9 recents: index 0 = hero, 1..4 = thumbnail row 1, 5..8 = thumbnail row 2.
+  // Up to 4 recents: index 0 = hero, 1..3 = single-row thumbnail tiles.
   std::vector<RecentBook> recentBooks;
   // Series-grouped view of recentBooks. Each tile is a single book or a
   // stack. tiles[0] is the hero; tiles[1..] fill the thumbnail rows.
@@ -81,7 +80,6 @@ class HomeActivity final : public Activity {
   Rect dividerRect() const;
   Rect sectionLabelRect() const;
   Rect thumbsRow1Rect() const;
-  Rect thumbsRow2Rect() const;
   Rect menuRect() const;
   Rect focusedItemRect() const;
   void renderFull();

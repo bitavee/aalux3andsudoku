@@ -1,10 +1,13 @@
 #include "SeriesViewerActivity.h"
 
 #include <Bitmap.h>
+#include <Epub.h>
+#include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <Xtc.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -24,16 +27,20 @@
 #include "stats/ReadingStatsManager.h"
 
 namespace {
-constexpr int kCellW = 140;
-// Cell content (8 top pad + 150 cover + 6 gap + 2-line title @ ~14 px =
-// 192 px). kCellH = 205 fits 3 rows under the Lyra header (84 px) in
-// portrait (avail = 627, 627/205 = 3 with 12 px slack) AND leaves a
-// visible inter-row gap. Was 209 (calibrated for a 1-line title) before
-// the title-wrap change; 205 is the tighter equivalent so 3 rows still
-// reliably fit after we reserved 10 px for the bottom footer safe margin.
-constexpr int kCellH = 205;
-constexpr int kCoverW = 100;
-constexpr int kCoverH = 150;
+// Cover dimensions mirror the home-screen thumbnail row (140 x 210) so the
+// series viewer reads as the same visual language -- larger, more legible
+// covers at the cost of one extra row of scrolling for big series. The 20 px
+// inter-cover gap also matches HomeRenderer's kThumbGap, so 3 x 160 cells
+// span the full 480 px portrait width with the covers visually breathing.
+constexpr int kCellW = 160;
+// Cell content (8 top pad + 210 cover + 6 gap + 2-line title @ ~14 px =
+// 252 px). kCellH = 260 fits 2 rows under the Lyra header (avail = 627,
+// 627/260 = 2 with 107 px slack) and leaves an inter-row gap. Bumped from
+// 205 so the larger covers actually get the room they need; the trade-off
+// is 6 visible tiles instead of 9.
+constexpr int kCellH = 260;
+constexpr int kCoverW = 140;
+constexpr int kCoverH = 210;
 constexpr int kCoverPadTop = 8;
 constexpr int kLabelGap = 6;
 // Bottom safe margin: keep the grid 10 px clear of the button-hint row so a
@@ -242,8 +249,16 @@ void SeriesViewerActivity::onEnter() {
   Activity::onEnter();
   focusIndex = 0;
   scrollRow = 0;
+  freeCoverBuffer();
+  lastScrollRow = -1;
+  lastFocusIndex = -1;
   sortAndPreload();
   requestUpdate();
+}
+
+void SeriesViewerActivity::onExit() {
+  freeCoverBuffer();
+  Activity::onExit();
 }
 
 void SeriesViewerActivity::runScan() {
@@ -260,8 +275,35 @@ void SeriesViewerActivity::runScan() {
   books = SeriesGrouping::discoverSeriesMembers(std::move(books), renderer, popupRect);
   SeriesGrouping::saveCachedBooks(key, books);
 
+  // Force-refresh cover thumbnails so missing/corrupt covers regenerate.
+  // HomeActivity only generates thumbs for the top recents, so series
+  // members discovered later often arrive here without a 210 px thumb on
+  // disk -- which is what produces the empty outline tiles the user sees.
+  // Deleting the existing thumb first ensures stale files get redone too.
+  const int total = static_cast<int>(books.size());
+  for (int i = 0; i < total; ++i) {
+    const RecentBook& book = books[i];
+    if (book.coverBmpPath.empty()) continue;
+    GUI.fillPopupProgress(renderer, popupRect, (i + 1) * 100 / std::max(total, 1));
+    const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, HomeRenderer::kThumbnailCoverHeight);
+    Storage.remove(thumbPath.c_str());
+    if (FsHelpers::hasEpubExtension(book.path)) {
+      Epub epub(book.path, "/.crosspoint");
+      epub.load(false, true);
+      epub.generateThumbBmp(HomeRenderer::kThumbnailCoverHeight);
+    } else if (FsHelpers::hasXtcExtension(book.path)) {
+      Xtc xtc(book.path, "/.crosspoint");
+      if (xtc.load()) {
+        xtc.generateThumbBmp(HomeRenderer::kThumbnailCoverHeight);
+      }
+    }
+  }
+
   focusIndex = 0;
   scrollRow = 0;
+  freeCoverBuffer();
+  lastScrollRow = -1;
+  lastFocusIndex = -1;
   sortAndPreload();
   requestUpdate();
 }
@@ -348,8 +390,26 @@ int SeriesViewerActivity::gridBottomY() const {
 int SeriesViewerActivity::visibleRows() const {
   const int avail = gridBottomY() - gridTopY();
   if (avail <= 0) return 0;
-  const int rows = avail / kCellH;
+  // Per-row pixels actually consumed by content (cover + label gap + 2 title
+  // lines). Smaller than kCellH because kCellH used to include the inter-row
+  // gap baked in; the gap is now derived dynamically by rowStride().
+  const int titleLineH = renderer.getLineHeight(UI_10_FONT_ID);
+  const int contentH = kCoverPadTop + kCoverH + kLabelGap + titleLineH * 2;
+  const int rows = avail / contentH;
   return rows < 1 ? 1 : rows;
+}
+
+int SeriesViewerActivity::rowStride() const {
+  const int avail = gridBottomY() - gridTopY();
+  const int vis = visibleRows();
+  if (vis <= 0) return kCellH;
+  const int titleLineH = renderer.getLineHeight(UI_10_FONT_ID);
+  const int contentH = kCoverPadTop + kCoverH + kLabelGap + titleLineH * 2;
+  // Distribute the available vertical space evenly across visible rows so the
+  // inter-row gap absorbs the slack rather than leaving a blank band below
+  // the bottom row. Never let the stride drop below content height.
+  const int even = avail / vis;
+  return even > contentH ? even : contentH;
 }
 
 void SeriesViewerActivity::clampScroll() {
@@ -370,11 +430,35 @@ void SeriesViewerActivity::clampScroll() {
 void SeriesViewerActivity::render(RenderLock&&) {
   clampFocus();
   clampScroll();
+
+  // Focus-only fast path: if the cached snapshot still matches the visible
+  // rows (scrollRow unchanged), just restore it and stamp the new focus
+  // border. This skips 6 BMP opens + decodes from SD per key press, which is
+  // what made the viewer feel laggy.
+  if (coverBufferStored && scrollRow == lastScrollRow && restoreCoverBuffer()) {
+    drawFocusBorder();
+    lastFocusIndex = focusIndex;
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    return;
+  }
+
   const int screenW = renderer.getScreenWidth();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
   renderer.clearScreen();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, screenW, metrics.headerHeight}, seriesTitle.c_str());
+
+  // Custom header: centered title (vs Lyra's default left-aligned). We still
+  // call drawHeader with a nullptr title so the battery icon + background
+  // fill come for free; the divider + centered title are drawn manually.
+  const Rect headerRect{0, metrics.topPadding, screenW, metrics.headerHeight};
+  GUI.drawHeader(renderer, headerRect, nullptr);
+  const int titleMaxW = screenW - metrics.batteryWidth * 2 - metrics.contentSidePadding * 2;
+  const std::string truncatedTitle =
+      renderer.truncatedText(UI_12_FONT_ID, seriesTitle.c_str(), titleMaxW, EpdFontFamily::BOLD);
+  renderer.drawCenteredText(UI_12_FONT_ID, headerRect.y + metrics.batteryBarHeight + 3, truncatedTitle.c_str(),
+                            /*black=*/true, EpdFontFamily::BOLD);
+  renderer.drawLine(headerRect.x, headerRect.y + headerRect.height - 3, headerRect.x + headerRect.width - 1,
+                    headerRect.y + headerRect.height - 3, 3, true);
 
   // Subtitle: "Author · N books · M finished". The author and finished count
   // are free signal currently missing from the screen -- the author is often
@@ -422,7 +506,7 @@ void SeriesViewerActivity::render(RenderLock&&) {
     if (row < scrollRow || row >= scrollRow + vis) continue;
     const int col = colOf(i);
     const int cellX = gridLeft + col * kCellW;
-    const int cellY = gridTop + (row - scrollRow) * kCellH;
+    const int cellY = gridTop + (row - scrollRow) * rowStride();
 
     const int coverX = cellX + (kCellW - kCoverW) / 2;
     const int coverY = cellY + kCoverPadTop;
@@ -444,12 +528,6 @@ void SeriesViewerActivity::render(RenderLock&&) {
       const int titleW = renderer.getTextWidth(UI_10_FONT_ID, line.c_str());
       renderer.drawText(UI_10_FONT_ID, cellX + (kCellW - titleW) / 2, lineY, line.c_str());
       lineY += titleLineHeight;
-    }
-
-    if (i == focusIndex) {
-      // Square selection border around the cover, matching the home screen.
-      renderer.drawRect(coverX - 2, coverY - 2, kCoverW + 4, kCoverH + 4);
-      renderer.drawRect(coverX - 3, coverY - 3, kCoverW + 6, kCoverH + 6);
     }
   }
 
@@ -490,5 +568,65 @@ void SeriesViewerActivity::render(RenderLock&&) {
 
   GUI.drawButtonHints(renderer, tr(STR_BACK), tr(STR_OPEN), nullptr, nullptr);
 
+  // Snapshot the framebuffer BEFORE the focus border is drawn. Subsequent
+  // focus-only moves restore this buffer and stamp a fresh border on top,
+  // skipping the SD reads / BMP decodes that dominate full-render cost.
+  coverBufferStored = storeCoverBuffer();
+  lastScrollRow = scrollRow;
+  lastFocusIndex = focusIndex;
+
+  drawFocusBorder();
+
   renderer.displayBuffer();
+}
+
+void SeriesViewerActivity::drawFocusBorder() const {
+  if (books.empty()) return;
+  const int screenW = renderer.getScreenWidth();
+  const int gridTop = gridTopY();
+  const int gridWidth = kCols * kCellW;
+  const int gridLeft = (screenW - gridWidth) / 2;
+  const int row = rowOf(focusIndex);
+  const int col = colOf(focusIndex);
+  const int cellX = gridLeft + col * kCellW;
+  const int cellY = gridTop + (row - scrollRow) * rowStride();
+  const int coverX = cellX + (kCellW - kCoverW) / 2;
+  const int coverY = cellY + kCoverPadTop;
+  // Square selection border around the cover, matching the home screen.
+  renderer.drawRect(coverX - 2, coverY - 2, kCoverW + 4, kCoverH + 4);
+  renderer.drawRect(coverX - 3, coverY - 3, kCoverW + 6, kCoverH + 6);
+}
+
+bool SeriesViewerActivity::storeCoverBuffer() {
+  uint8_t* fb = renderer.getFrameBuffer();
+  if (fb == nullptr) return false;
+  const size_t sz = renderer.getBufferSize();
+  if (sz == 0) return false;
+  if (coverBuffer == nullptr) {
+    coverBuffer = static_cast<uint8_t*>(malloc(sz));
+    if (coverBuffer == nullptr) {
+      LOG_ERR("SVW", "coverBuffer malloc failed: %u bytes", static_cast<unsigned>(sz));
+      return false;
+    }
+  }
+  memcpy(coverBuffer, fb, sz);
+  return true;
+}
+
+bool SeriesViewerActivity::restoreCoverBuffer() {
+  if (coverBuffer == nullptr) return false;
+  uint8_t* fb = renderer.getFrameBuffer();
+  if (fb == nullptr) return false;
+  const size_t sz = renderer.getBufferSize();
+  if (sz == 0) return false;
+  memcpy(fb, coverBuffer, sz);
+  return true;
+}
+
+void SeriesViewerActivity::freeCoverBuffer() {
+  if (coverBuffer != nullptr) {
+    free(coverBuffer);
+    coverBuffer = nullptr;
+  }
+  coverBufferStored = false;
 }
