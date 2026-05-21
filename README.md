@@ -198,6 +198,47 @@ If any of those would matter to you, open an issue or PR.
 
 ---
 
+## Developing
+
+### Browser-based emulator
+
+A Docker-packaged emulator lives in [`emulator/`](./emulator). **Honest status: scaffolding.** v0 is a Python stub that proves the WebSocket protocol and SD-card mount work end to end — `src/` does not yet run natively on the host. It's useful right now for iterating on the web frontend and protocol; **not** a substitute for hardware testing.
+
+#### Running it
+
+```bash
+make emulator           # foreground (Ctrl-C to stop)
+make emulator-detached  # background
+make emulator-logs      # tail container logs
+make emulator-stop      # stop container
+make emulator-rebuild   # force clean rebuild
+make emulator-clean     # nuke containers, volumes, build cache
+```
+
+Open <http://localhost:8080>. Requires Docker Desktop (or Docker Engine + Compose v2).
+
+#### Putting books on it
+
+Drop `.epub` files into `emulator/sdcard/`. That folder:
+- Is bind-mounted into the container at `/sdcard`.
+- Is auto-created by `make emulator` on first run.
+- Is gitignored at both `emulator/.gitignore` and the root `.gitignore` — SD card contents cannot be committed by accident.
+
+You can copy a real SD card's contents in (including the `.crosspoint/` cache), but keep the emulator locked to 800×480 with the same render settings for cache interchange to work.
+
+#### What the emulator does NOT replace
+
+- **No e-ink ghosting or refresh latency** — canvas repaints instantly.
+- **No 380KB RAM ceiling** — host has GB; leaks pass silently.
+- **No FreeRTOS scheduling** — host threads have different semantics.
+- **No Wi-Fi / OTA / OPDS / battery**.
+
+This means the emulator is useful for **UI, EPUB, dictionary, and stats logic iteration** — but the four-orientation hardware checklist is still required before declaring any visual or input change done.
+
+See [`emulator/README.md`](./emulator/README.md) for the WebSocket protocol and the next concrete step (HAL shims + CMake host build of `src/` + `lib/`).
+
+---
+
 ## Contributing
 
 Contributions are very welcome. The constraints to keep in mind:

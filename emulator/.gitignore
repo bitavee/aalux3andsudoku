@@ -1,0 +1,5 @@
+sdcard/
+.venv/
+__pycache__/
+*.pyc
+.cache/

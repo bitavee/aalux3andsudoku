@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AALU Emulator</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>AALU Emulator <span class="version">milestone 2</span></h1>
+        <div class="header-controls">
+          <button id="orientation" class="orientation-btn" title="Toggle orientation">↻ Horizontal</button>
+          <span id="status" class="status status-disconnected">disconnected</span>
+        </div>
+      </header>
+
+      <div class="device" id="device">
+        <div class="device-body" id="device-body">
+          <div class="screen-row">
+            <div class="screen-frame" id="screen-frame">
+              <canvas id="screen" width="800" height="480"></canvas>
+            </div>
+            <div class="side-buttons" aria-label="Side buttons (physical: UP / DOWN / POWER)">
+              <button class="side-btn" data-button="SIDE_UP"    title="↑ side up">▲</button>
+              <button class="side-btn" data-button="SIDE_DOWN"  title="↓ side down">▼</button>
+              <button class="side-btn side-btn-power" data-button="SIDE_POWER" title="power">⏻</button>
+            </div>
+          </div>
+
+          <div class="front-buttons" aria-label="Front buttons (4 physical: two rocker pairs, behavior changes per screen)">
+            <div class="rocker">
+              <button data-button="FRONT_1" title="front 1 (◀)">◀</button>
+              <button data-button="FRONT_2" title="front 2 (▶)">▶</button>
+            </div>
+            <div class="rocker">
+              <button data-button="FRONT_3" title="front 3 (◀)">◀</button>
+              <button data-button="FRONT_4" title="front 4 (▶)">▶</button>
+            </div>
+          </div>
+
+          <p class="hint">
+            Keyboard: ↑ ↓ side scroll · 1 2 3 4 front buttons · P power
+          </p>
+        </div>
+      </div>
+
+      <section class="log">
+        <header>
+          <h2>Log</h2>
+          <button id="rescan" class="link-button">Rescan SD card</button>
+        </header>
+        <pre id="log"></pre>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

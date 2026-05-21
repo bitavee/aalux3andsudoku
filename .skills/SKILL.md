@@ -877,4 +877,47 @@ logSerial.flush();   // force output before suspected crash
 
 ---
 
+## Browser-based Emulator
+
+A Docker-packaged emulator lives in `emulator/`. **Honest status: scaffolding.** v0 is a Python stub that proves the WebSocket protocol and SD-card mount work end to end — `src/` does not yet run natively. Useful right now for iterating on web frontend / protocol; **not** a substitute for hardware testing.
+
+### Running it
+
+```bash
+make emulator           # foreground (Ctrl-C to stop)
+make emulator-detached  # background
+make emulator-logs      # tail container logs
+make emulator-stop      # stop container
+make emulator-rebuild   # force clean rebuild
+make emulator-clean     # nuke containers, volumes, build cache
+```
+
+Then open <http://localhost:8080>. Requires Docker Desktop (or Docker Engine + Compose v2).
+
+### Putting books on it
+
+Drop `.epub` files into `emulator/sdcard/`. That folder:
+- Is bind-mounted into the container at `/sdcard`.
+- Is auto-created by `make emulator` on first run.
+- Is gitignored at both `emulator/.gitignore` and the root `.gitignore` — SD card contents cannot be committed by accident.
+
+When the real native build lands, it will read from this same path. You can copy a real SD card's contents in (including `.crosspoint/` cache) — but see the cache-compatibility caveat below.
+
+### What the emulator does NOT replace
+
+Hard fidelity gaps:
+- **No e-ink ghosting / refresh latency** — canvas repaints instantly.
+- **No 380 KB RAM ceiling** — host has GB; leaks pass silently.
+- **No FreeRTOS scheduling** — host threads, different semantics.
+- **No Wi-Fi / OTA / OPDS / battery**.
+- **Cache binary layout** is tied to font/size/margin/orientation — keep emulator locked to 800×480 + same render settings for cache interchange.
+
+This means the emulator is useful for **UI, EPUB, dictionary, and stats logic iteration** — but the four-orientation hardware checklist in [Testing and Verification Workflow](#testing-and-verification-workflow) is still required before declaring any visual or input change done.
+
+### Architecture
+
+See `emulator/README.md` for the WebSocket protocol (1bpp framebuffer over binary frames, JSON for control) and the next concrete step (HAL shims + CMake host build of `src/` + `lib/`).
+
+---
+
 Philosophy: **We are building a dedicated e-reader, not a Swiss Army knife.** If a feature adds RAM pressure without significantly improving the reading experience, it is Out of Scope. AALU's added features (Dictionary, KOReader sync, Stats v2.5, Quick Settings overlay) all earn their RAM cost — anything new should clear the same bar.

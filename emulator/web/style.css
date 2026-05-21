@@ -1,0 +1,305 @@
+* { box-sizing: border-box; }
+
+:root {
+  --casing:        #ebe7df;   /* frost white plastic */
+  --casing-edge:   #d4cfc4;   /* slightly darker rim */
+  --casing-shadow: #b5b0a3;
+  --bezel:         #2a2a2a;
+  --screen-bg:     #f0f0e8;
+  --btn-face:      #e2ddd2;
+  --btn-face-hi:   #f1ede2;
+  --btn-edge:      #c9c3b5;
+  --btn-text:      #3a382f;
+  --btn-shadow:    #b9b3a4;
+  --power-red:     #b73a3a;
+  --power-red-edge:#8a2929;
+  --page-bg:       #1c1d20;
+  --panel-bg:      #232428;
+  --text:          #e6e6e2;
+  --text-dim:      #9c9c95;
+  --accent:        #6aa6ff;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  background: var(--page-bg);
+  color: var(--text);
+}
+
+main {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+h1 {
+  font-weight: 500;
+  font-size: 20px;
+  margin: 0;
+}
+
+.version {
+  font-weight: 400;
+  font-size: 12px;
+  opacity: 0.5;
+  margin-left: 8px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: #3a3b40;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--text);
+}
+.status-connected    { background: #2a6f2a; }
+.status-disconnected { background: #6f2a2a; }
+
+.orientation-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  min-width: 0;
+  background: #3a3b40;
+  color: var(--text);
+  border-color: #4a4b50;
+}
+.orientation-btn:hover { background: #4a4b50; }
+
+/* --- The physical "device" --- */
+
+.device {
+  background: var(--casing);
+  background-image:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,0.55), transparent 55%),
+    radial-gradient(circle at 80% 90%, rgba(0,0,0,0.06), transparent 60%);
+  padding: 36px 28px 28px;
+  border-radius: 22px;
+  margin: 32px auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid var(--casing-edge);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.65),
+    inset 0 -2px 4px rgba(0,0,0,0.10),
+    0 18px 40px rgba(0,0,0,0.45),
+    0 4px 10px rgba(0,0,0,0.30);
+}
+
+.device-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.screen-row {
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+}
+
+/* The dark bezel surrounding the e-ink panel. */
+.screen-frame {
+  background: var(--bezel);
+  padding: 18px;
+  border-radius: 6px;
+  position: relative;
+  width: 836px;
+  height: 516px;
+  transition: width 0.2s ease, height 0.2s ease;
+  box-shadow:
+    inset 0 0 0 1px #1a1a1a,
+    inset 0 2px 6px rgba(0,0,0,0.7),
+    0 1px 0 rgba(255,255,255,0.4);
+}
+
+#screen {
+  display: block;
+  width: 800px;
+  height: 480px;
+  background: var(--screen-bg);
+  image-rendering: pixelated;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  transition: transform 0.2s ease;
+}
+
+/* --- Side buttons (right edge of device) --- */
+
+.side-buttons {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 14px;
+  padding: 32px 0;
+}
+
+.side-btn {
+  min-width: 46px;
+  padding: 20px 12px;
+  font-size: 16px;
+  background: linear-gradient(180deg, var(--btn-face-hi), var(--btn-face));
+  color: var(--btn-text);
+  border: 1px solid var(--btn-edge);
+  border-radius: 8px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.7),
+    inset 0 -2px 3px rgba(0,0,0,0.10),
+    0 2px 0 var(--btn-shadow),
+    0 4px 6px rgba(0,0,0,0.20);
+  transition: transform 0.05s ease, box-shadow 0.05s ease;
+}
+.side-btn:hover { background: linear-gradient(180deg, #f7f3e9, #e8e2d6); }
+.side-btn:active {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 1px 3px rgba(0,0,0,0.25),
+    0 0 0 var(--btn-shadow);
+}
+
+.side-btn-power {
+  color: #fff;
+  background: linear-gradient(180deg, #c64646, var(--power-red));
+  border-color: var(--power-red-edge);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    inset 0 -2px 3px rgba(0,0,0,0.20),
+    0 2px 0 #5e1c1c,
+    0 4px 6px rgba(0,0,0,0.25);
+}
+.side-btn-power:hover { background: linear-gradient(180deg, #d05050, #a93232); }
+
+/* --- Front buttons (below screen): two rocker pairs --- */
+
+.front-buttons {
+  display: flex;
+  gap: 28px;
+  justify-content: center;
+  padding: 18px 0 8px;
+}
+
+.rocker {
+  display: flex;
+  background: linear-gradient(180deg, var(--btn-face-hi), var(--btn-face));
+  border: 1px solid var(--btn-edge);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.7),
+    inset 0 -2px 3px rgba(0,0,0,0.10),
+    0 2px 0 var(--btn-shadow),
+    0 4px 8px rgba(0,0,0,0.22);
+}
+
+.rocker button {
+  min-width: 96px;
+  font-size: 18px;
+  padding: 14px 18px;
+  background: transparent;
+  color: var(--btn-text);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transition: background 0.05s ease;
+}
+.rocker button:hover  { background: rgba(0,0,0,0.06); }
+.rocker button:active { background: rgba(0,0,0,0.14); }
+.rocker button + button {
+  border-left: 1px solid var(--btn-edge);
+}
+
+/* --- Portrait: rotate device dimensions and screen content --- */
+
+.device.portrait .screen-frame {
+  width: 516px;
+  height: 836px;
+}
+
+.device.portrait #screen {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+/* In portrait the device is taller, side buttons still live on the right edge. */
+.device.portrait .side-buttons {
+  padding: 56px 0;
+}
+
+/* --- Generic button reset (kept lightweight so .rocker/.side-btn dominate) --- */
+
+button {
+  padding: 8px 16px;
+  background: var(--btn-face);
+  color: var(--btn-text);
+  border: 1px solid var(--btn-edge);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  min-width: 80px;
+}
+
+.hint {
+  font-size: 11px;
+  color: #6a685e;
+  margin: 6px 0 0;
+  text-align: center;
+}
+
+/* --- Log panel (sits outside the device, dark theme) --- */
+
+.log {
+  background: var(--panel-bg);
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #2f3035;
+}
+
+.log > header {
+  margin-bottom: 8px;
+}
+
+.log h2 {
+  font-size: 14px;
+  font-weight: 400;
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.link-button {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  padding: 0;
+  cursor: pointer;
+  font-size: 12px;
+  min-width: 0;
+}
+.link-button:hover { background: transparent; text-decoration: underline; }
+
+.log pre {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  margin: 0;
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow-y: auto;
+  color: #b8b8b0;
+}
