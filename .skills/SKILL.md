@@ -1,923 +1,445 @@
 # AALU Development Guide
 
-Project: Open-source e-reader firmware for the **Xteink X4** (ESP32-C3).
-Origin: Originally forked from [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader); now an independent system with its own UI, Dictionary engine, KOReader sync, and Reading Stats.
-Mission: Provide a lightweight, high-performance, *personalized* reading experience focused on EPUB rendering on constrained hardware.
-Repo root: `/Users/disrael/Projects/personal/xteink/aalu`
-Current firmware version: see `[aalu] version` in `platformio.ini` (currently `1.1.0`).
+Project: Open-source e-reader firmware for the **Xteink X4** (ESP32-C3), forked from [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader). EPUB-focused, RAM-constrained.
+Repo: `/Users/disrael/Projects/personal/xteink/aalu`. Version: see `[aalu] version` in `platformio.ini`.
 
-> Note: Many code-level identifiers (e.g. `CrossPointSettings`, `CrossPointState`, the `.crosspoint/` cache directory) intentionally retain the upstream names for backward compatibility with existing on-device caches. **Do not rename them** unless you also ship a binary migration path (see `stats.bin` migration in [Stats refactor](#aalu-specific-features)).
+> Legacy identifiers (`CrossPointSettings`, `CrossPointState`, `.crosspoint/`) are retained for cache backward compatibility. Do not rename without a binary migration path.
 
 ---
 
-## AI Agent Identity and Cognitive Rules
-* Role: Senior Embedded Systems Engineer (ESP-IDF / Arduino-ESP32 specialised).
-* Primary Constraint: 380 KB RAM is the hard ceiling. Stability is non-negotiable.
-* Evidence-Based Reasoning: Before proposing a change, you MUST cite the specific file path and line numbers that justify the modification.
-* Anti-Hallucination: Do not assume the existence of libraries or ESP-IDF functions. If unsure of an API's availability for the ESP32-C3 RISC-V target, check `open-x4-sdk/` or official docs first.
-* No Unfounded Claims: Do not claim performance gains or memory savings without explaining the technical mechanism (e.g. DRAM vs IRAM usage).
-* Resource Justification: Justify any new heap allocation (`new`, `malloc`, `std::vector`) or explain why a stack/static alternative was rejected.
-* Verification: After suggesting a fix, instruct the user how to verify it (e.g. monitor heap via Serial, delete a specific cache file, test in all four orientations).
-* **Always Build + Test After Changes**: Any code change MUST be followed by a successful `pio run` (default env) AND running every available host test script under `test/`. No exceptions — even a one-line edit can break the build (missing include, unbalanced `#ifdef`, lock-file drift). See [Testing and Verification Workflow](#testing-and-verification-workflow) for the exact commands. Do not declare a task complete, do not propose a commit, and do not hand off to the user until both the build and tests are green.
+## AI Agent Rules
+- Role: Senior embedded engineer (ESP-IDF / Arduino-ESP32, ESP32-C3 RISC-V).
+- **380 KB RAM is a hard ceiling. Stability is non-negotiable.**
+- Cite file:line for any change you propose. Do not invent APIs — verify against `open-x4-sdk/` or official docs.
+- Justify any new heap allocation. Explain memory/perf claims by mechanism (DRAM vs IRAM, etc.).
+- After any change: instruct the user how to verify (heap, cache, all 4 orientations).
+- **Always build + run host tests after changes.** See [Testing Workflow](#testing-workflow). No exceptions, even one-line edits.
 
 ---
 
-## Development Environment Awareness
+## Hardware Constraints
+- ESP32-C3 single-core RISC-V @ 160 MHz, ~380 KB RAM (NO PSRAM), 16 MB flash.
+- Display: 800×480 e-ink, single 48 KB framebuffer (SINGLE_BUFFER mode), slow refresh (1–2 s full).
+- Storage: SD card (books + cache in `.crosspoint/`).
 
-**CRITICAL**: Detect the host platform at session start to choose appropriate tools and commands.
+### Resource Protocol
+1. **Stack**: locals < 256 B. Use `std::unique_ptr` or static pools for larger.
+2. **Heap**: no repeated `new`/`delete` in loops. Allocate in `onEnter()`, reuse.
+3. **Flash placement**: large constants → `static const` / `static constexpr` (lives in flash, not DRAM).
+4. **Strings**: NO `std::string`/Arduino `String` in hot paths. Use `std::string_view` (read-only) or `snprintf` into fixed `char[]`.
+5. **UI strings**: use `tr(STR_*)` always — never hardcode. Log strings may be hardcoded.
+6. **`constexpr` first** — for compile-time tables and constants.
+7. **`std::vector`**: always `.reserve(N)` before `push_back` loops.
+8. **SD/SPIFFS writes**: never on every interaction. Guard with change-check; debounce progress saves. Flash has finite erase cycles.
 
+### Flash budget — 6,553,600-byte HARD LIMIT
+Each OTA slot in `partitions.csv` is `0x640000`. Exceeding it → bootloader rejects → infinite reset loop, looks like a freeze.
+
+Rules:
+1. **Never push the `default` env image over 6,553,600 bytes.** It's close to the limit because `LOG_LEVEL=2` keeps LOG_DBG strings in flash.
+2. After each change, check `Total image size: N bytes` in `pio run` output (NOT the misleading "Flash X% used"). Ground truth: `wc -c .pio/build/default/firmware.bin`.
+3. Soft ceiling: **6,553,344 bytes** (256-byte safety margin).
+4. If a feature won't fit: shrink it, gate LOG_DBG behind `#if LOG_LEVEL >= 3`, or target `gh_release` (~33 KB headroom). **Do not bump OTA partition without explicit user approval** — breaks OTA upgrades from older firmware.
+
+### Debugging "frozen device" → capture serial first
 ```bash
-uname -s
-# Returns: Darwin (macOS), Linux, MINGW64_NT-* (Windows Git Bash)
-```
-
-### Platform-Specific Behaviours
-- **macOS (this repo's primary host)**: Unix paths. Serial port is typically `/dev/cu.usbmodem*`. Pass it explicitly to the monitor: `python3 scripts/debugging_monitor.py /dev/cu.usbmodem2101`.
-- **Linux/WSL**: Full bash; serial port typically `/dev/ttyUSB*` or `/dev/ttyACM*`.
-- **Windows (Git Bash)**: Unix commands but Windows-style paths under the hood; limited glob — use `find ... | xargs` for batch ops.
-
-**Cross-platform code formatting**:
-```bash
-find src lib -name "*.cpp" -o -name "*.h" | xargs clang-format -i
-```
-
----
-
-## Platform and Hardware Constraints
-
-### Hardware Specs
-* MCU: ESP32-C3 (single-core RISC-V @ 160 MHz)
-* RAM: ~380 KB usable (VERY LIMITED — primary project constraint)
-  * **NO PSRAM** (unlike ESP32-S3)
-  * **Single-buffer mode**: only ONE 48 KB framebuffer
-* Flash: 16 MB
-* Display: 800 × 480 E-Ink (slow refresh, monochrome, 1–2 s full update)
-  * Framebuffer: 48,000 bytes (800 × 480 ÷ 8)
-* Storage: SD Card (books + aggressive caching)
-
-### The Resource Protocol
-1. **Stack Safety**: Limit local function variables to < 256 bytes. The ESP32-C3 default task stack is small; use `std::unique_ptr` or static pools for larger buffers.
-2. **Heap Fragmentation**: Avoid repeated `new`/`delete` in loops. Allocate once during `onEnter()` and reuse.
-3. **Flash Persistence**: Large constant data (UI strings, lookup tables) MUST be `static const` / `static constexpr` so they live in Flash, not DRAM.
-4. **String Policy**: Prohibit `std::string` and Arduino `String` in hot paths. Use `std::string_view` for read-only access; `snprintf` into fixed `char[]` buffers for construction.
-5. **UI Strings**: All user-facing text must use the `tr()` macro (e.g. `tr(STR_LOADING)`) for i18n. **Never hardcode UI strings.** Logging messages (`LOG_DBG`/`LOG_ERR`) may be hardcoded.
-6. **`constexpr` First**: Compile-time constants and lookup tables must be `constexpr`, not just `static const`. Moves computation to compile time, enables dead-branch elimination, guarantees flash placement.
-7. **`std::vector` Pre-allocation**: Always call `.reserve(N)` before any `push_back()` loop. Each growth event = alloc-new + copy + free-old → three heap ops that fragment DRAM. Estimate conservatively when the final size is unknown.
-8. **SPIFFS / SD Write Throttling**: Never write a settings file on every user interaction. Guard with a value-change check (`if (newVal == _current) return;`). Progress saves during reading must be debounced — write on activity exit or every N page turns, not every turn. Flash sectors have a finite erase-cycle limit. AALU's Quick Settings (Aa) overlay is built on this principle: "deferred SD card writes to protect flash lifespan".
-
----
-
-## Project Architecture
-
-### Build System: PlatformIO
-
-PlatformIO is BOTH a VS Code extension AND a CLI tool.
-
-1. **VS Code Extension** (recommended for daily dev):
-   * Extension ID: `platformio.platformio-ide`
-   * Toolbar: Build (✓), Upload (→), Monitor (🔌)
-2. **CLI** (`pio` command):
-   * Install: `pip install platformio` (or `pipx install platformio`)
-   * Verify: `which pio`
-
-**Configuration files**:
-* `platformio.ini` — committed, shared project config
-* `platformio.local.ini` — gitignored, personal overrides (serial port, debug flags). Already referenced via `extra_configs = platformio.local.ini`
-* `partitions.csv` — ESP32 flash partition layout
-
-### Build Environments (`platformio.ini`)
-| Env | Purpose | Log Level | Notes |
-|---|---|---|---|
-| `default` | Local development | 2 | Serial logging on, fastest iteration |
-| `gh_release` | Production release | 0 | Released artefact |
-| `gh_release_rc` | Release candidate | 1 | RC builds |
-| `slim` | Minimal build | — | No serial logging |
-
-### Flash budget — the 6,553,600 byte ceiling (HARD LIMIT, **do NOT cross**)
-
-Each OTA app slot (`app0`, `app1` in `partitions.csv`) is **0x640000 = 6,553,600 bytes**. The `.bin` size the flasher writes is what the bootloader checks at boot. If it exceeds 6,553,600 bytes, the bootloader rejects it with:
-
-```
-E (1049) esp_image: Image length <N> doesn't fit in partition length 6553600
-E (1049) boot: OTA app partition slot 0 is not bootable
-E (1062) boot: No bootable app partitions in the partition table
-```
-
-…and the device enters a **boot loop** that looks like a freeze to the user. There is no panic backtrace, no display output, no recovery — only the bootloader keeps resetting. The only way out is to reflash a smaller image over USB.
-
-**Rules when modifying this codebase**:
-
-1. **Never push the `default` env image over 6,553,600 bytes.** The `default` env is already near the limit (~33 KB headroom vs `gh_release`) because `LOG_LEVEL=2` keeps all `LOG_DBG` strings in flash. Even a 200-byte feature can push it over.
-2. **After every change, check `pio run` output**: the `Total image size: N bytes` line is the relevant number, **NOT** the "Flash X% used" stat (which reports `.text+.data+.rodata` only and is misleading). `wc -c .pio/build/default/firmware.bin` is the definitive ground truth — the bootloader's "Image length" matches this value.
-3. **Treat 6,553,344 bytes as the soft ceiling** (256-byte safety margin for future micro-additions).
-4. **If a feature won't fit in `default`**: either (a) make it smaller, (b) move some `LOG_DBG` calls behind `#if LOG_LEVEL >= 3` so they only ship in a yet-slimmer dev variant, or (c) verify it fits in `gh_release` (which has ~33 KB headroom) and test against that env. **Never bump the OTA partition** without explicit user approval — it changes the layout for everyone and breaks OTA upgrades from older firmware.
-
-### Debugging a "frozen device" report
-
-When the user says "the device froze after I flashed" — *capture serial first, diagnose second.* The freeze rarely means the application hung; it usually means the bootloader couldn't load the app at all.
-
-```bash
-# 1. Confirm the port (macOS)
-ls /dev/cu.usbmodem*
-
-# 2. Capture ~8 seconds of bootloader output WITHOUT flashing anything (the device is already cycling)
-python3 -c "
-import serial, time, sys
-ser = serial.Serial('/dev/cu.usbmodem2101', 115200, timeout=2)
-end = time.time() + 8
-data = b''
-while time.time() < end:
-    chunk = ser.read(4096)
-    if chunk: data += chunk
-ser.close()
-sys.stdout.write(data.decode('utf-8', errors='replace'))
-"
-
-# 3. Or use the enhanced monitor (decodes panic backtraces)
 python3 scripts/debugging_monitor.py /dev/cu.usbmodem2101
 ```
 
-**Decoding the boot log — common signatures**:
-
-| Pattern in serial output | Meaning | Fix |
+| Boot-log signature | Meaning | Fix |
 |---|---|---|
-| `Image length N doesn't fit in partition length 6553600` | `.bin` too big for OTA slot | Reduce code size or use a slimmer env (see Flash budget above) |
-| `No bootable app partitions in the partition table` (looping) | Both OTA slots failed validation | Reflash a known-good `.bin` over USB |
-| `Guru Meditation Error: ... LoadProhibited` / `StoreProhibited` | Null pointer or freed memory access | Decode backtrace with `debugging_monitor.py`; check `onExit` cleanup |
-| `Stack canary watchpoint triggered (TaskName)` | Stack overflow in the named task | Increase that task's stack size; move large locals to heap |
-| `Task watchdog got triggered. CPU 0: TaskName` | Task ran >5 s without yielding | Add `vTaskDelay(1)` in tight loops; chunk long parsing work |
-| `Brownout detector was triggered` | Voltage sag, often during e-ink refresh under low battery | Check battery; not a code issue |
-| `rst:0x3 (RTC_SW_SYS_RST)` repeating without a panic message | Watchdog or assertion-driven reset early in boot | Check `HalSystem::checkPanic` log; reduce `setupDisplayAndFonts` work |
-| Hex `0x4080xxxx` addresses in a backtrace | Code addresses — feed to `debugging_monitor.py` to symbolicate |
-| Serial silent / no output at all | USB CDC not ready yet, OR device crashed before `Serial.begin()` | Pull `RST` low briefly; ensure `ARDUINO_USB_CDC_ON_BOOT=1` is set |
+| `Image length N doesn't fit in partition length 6553600` | `.bin` too big | Shrink image / use slimmer env |
+| `No bootable app partitions in the partition table` | Both OTA slots invalid | Reflash known-good `.bin` via USB |
+| `Guru Meditation: LoadProhibited/StoreProhibited` | Null / use-after-free | Decode backtrace; audit `onExit()` cleanup |
+| `Stack canary watchpoint triggered (TaskName)` | Stack overflow | Bump task stack; move locals to heap |
+| `Task watchdog got triggered. CPU 0: TaskName` | Task ran >5 s without yielding | Add `vTaskDelay(1)` in tight loops |
+| `Brownout detector was triggered` | Voltage sag, often during refresh | Check battery; not code |
+| `rst:0x3 (RTC_SW_SYS_RST)` looping | Watchdog / assertion early in boot | Audit `HalSystem::checkPanic`, `setupDisplayAndFonts` |
+| `0x4080xxxx` in backtrace | Code address | Feed to `debugging_monitor.py` to symbolicate |
 
-**Investigation workflow**:
-
-1. **First**, look for `esp_image: Image length` → if present, it's a flash-size problem, do not touch code logic — shrink the image instead.
-2. **Second**, look for `Guru Meditation` / `panic` → real crash; capture the full backtrace and find the offending function.
-3. **Third**, look for repeated `rst:0x3` without a panic message → silent reset; suspect watchdog, brownout, or assertion firing before logs are flushed.
-4. Only after the bootloader output is understood, look at application logs (lines prefixed with `[NNNN]   ...`).
-
-**Never guess at a frozen-device cause without serial output.** The Bionic Reading freeze (2026-05-15) was diagnosed in under a minute once the bootloader log was captured — versus a long session of speculative edits before that.
-
-### Critical Build Flags
-These flags fundamentally shape firmware behaviour. Do not change them lightly.
-
-```cpp
--DEINK_DISPLAY_SINGLE_BUFFER_MODE=1   // Single 48 KB framebuffer (saves 48 KB)
--DARDUINO_USB_MODE=1                  // Enable USB CDC
--DARDUINO_USB_CDC_ON_BOOT=1           // Serial available immediately at boot
--DXML_CONTEXT_BYTES=1024              // EPUB XML parser memory cap
--DXML_GE=0                            // Disable XML general entities (security)
--DUSE_UTF8_LONG_NAMES=1               // SD card long-filename support
--DPNG_MAX_BUFFERED_PIXELS=16416       // Allow up to 2048px-wide PNG scanlines
--DAALU_VERSION=\"1.1.0\"        // Set from [aalu] version
--fno-exceptions                       // No C++ exceptions
--std=gnu++2a                          // C++20
-```
-
-`-Wl,--wrap=panic_print_backtrace,--wrap=panic_abort` is also wired up — see `lib/` for custom panic handling.
-
-**Pre-build scripts** (in `extra_scripts`):
-* `scripts/build_html.py` — generates `*.generated.h` from `data/html/`
-* `scripts/gen_i18n.py` — generates I18n tables from `lib/I18n/translations/*.yaml`
-* `scripts/patch_jpegdec.py` — patches the JPEG decoder library
-* `scripts/git_branch.py` — bakes branch info into the build
-
-### `SINGLE_BUFFER_MODE` Implications
-- Only ONE framebuffer exists (not double-buffered).
-- Grayscale rendering requires temporary buffer allocation via `renderer.storeBwBuffer()` and must be freed with `renderer.restoreBwBuffer()`.
-- See [`lib/GfxRenderer/GfxRenderer.cpp:439-440`](../lib/GfxRenderer/GfxRenderer.cpp) for canonical malloc usage in the renderer.
-
-### Directory Structure
-```
-aalu/
-├── src/
-│   ├── main.cpp                       # Entry point + global font init
-│   ├── CrossPointSettings.h           # User settings (kept original name)
-│   ├── MappedInputManager.cpp/.h      # Logical button → hardware mapping
-│   ├── fontIds.h                      # Font ID constants
-│   ├── activities/                    # UI screens (Activity lifecycle)
-│   │   ├── home/                      # HomeActivity, FileBrowser, RecentBooks
-│   │   ├── reader/                    # EpubReader, TxtReader, XtcReader,
-│   │   │                              # Dictionary*, KOReaderSync, etc.
-│   │   ├── settings/                  # Settings UI
-│   │   ├── stats/                     # Reading Statistics v2.5
-│   │   ├── network/                   # Wifi, OTA, OPDS
-│   │   ├── browser/                   # File browser flows
-│   │   ├── boot_sleep/                # Boot + sleep screens
-│   │   └── util/                      # Keyboard entry, etc.
-│   └── network/html/                  # HTML page sources + generated headers
-├── lib/                               # Internal libraries
-│   ├── hal/                           # HAL: HalDisplay, HalGPIO, HalStorage
-│   ├── Epub/                          # EPUB parsing + section caching
-│   ├── GfxRenderer/                   # E-ink rendering primitives
-│   ├── EpdFont/                       # Font conversion + builtin fonts
-│   ├── UITheme/                       # Themed UI (the `GUI` macro)
-│   └── I18n/                          # i18n: translations/*.yaml + generated
-├── open-x4-sdk/                       # Low-level SDK (git submodule)
-├── docs/                              # File formats and other internals
-├── scripts/                           # Build + dev tooling (Python)
-├── English-Dictionary/                # Default StarDict files
-├── partitions.csv                     # Flash partition layout
-└── platformio.ini                     # Build config
-```
-
-### Hardware Abstraction Layer (HAL)
-
-**CRITICAL**: Always use HAL classes, NOT SDK classes directly.
-
-| HAL Class | Wraps SDK Class | Purpose | Singleton Macro |
-|-----------|-----------------|---------|-----------------|
-| `HalDisplay` | `EInkDisplay` | E-ink display control | *(none)* |
-| `HalGPIO` | `InputManager` | Button input handling | *(none)* |
-| `HalStorage` | `SDCardManager` | SD card file I/O | `Storage` |
-
-Why HAL? Consistent error logging per module, abstracts SDK details, centralises resource management.
-
-```cpp
-#include <HalStorage.h>
-
-FsFile file;  // SdFat FsFile, NOT Arduino File
-if (Storage.openFileForRead("MODULE", "/path/to/file.bin", file)) {
-  // Read from file
-  file.close();  // Explicit close required
-}
-```
+Workflow: (1) flash-size error → don't touch logic, shrink. (2) Guru Meditation → capture full backtrace, find function. (3) Repeated `rst:0x3` without panic → suspect watchdog/brownout/assertion before flush. **Never guess without serial output.**
 
 ---
 
-## AALU-Specific Features
+## ESP32-C3 Platform Pitfalls
 
-These are AALU's additions on top of the inherited CrossPoint engine. When working in these areas, follow the existing patterns rather than introducing new abstractions.
-
-* **Custom UI Themes & Layouts** (`src/activities/home/`, `lib/UITheme/`):
-  * Multiple home themes: Classic, Lyra, Recent6 Grid (3×2, memory-safe).
-  * Asymmetrical bottom menu and cascading cover-resolution fallbacks to prevent E-ink ghosting.
-* **Apps Submenu** (`src/activities/AppsActivity.*`): Centralised hub for utility apps (File Transfer, Stats, OPDS).
-* **KOReader Sync** (`src/activities/reader/KOReaderSyncActivity.*`):
-  * Asymmetrical heuristic paragraph-level sync — fixes chapter drift, prevents remote-device XML parser crashes.
-* **Reading Statistics v2.5** (`src/activities/stats/`):
-  * Global dashboard (all-time hours, total finished books).
-  * Contextual filtering: Reading vs Finished (toggle with `Right` button).
-  * Per-book analytics: Last Session, total time, Avg pages/min.
-  * 3-line title support with intelligent wrapping + strict list-view truncation.
-  * **Binary migration**: v4/v5 → v6 for `stats.bin`. **If you change `stats.bin` layout, bump version + add migration code**.
-* **System Stability**:
-  * Deep-sleep protection: forced session save during power-off.
-  * Session guarding: 3-minute threshold prevents short wake-cycle stat corruption.
-* **Offline English Dictionary** (`src/activities/reader/Dictionary*Activity.*`, `English-Dictionary/`):
-  * Pixel-perfect word selection from EPUB text.
-  * StarDict format (`dictionary.dict` + `dictionary.idx` on SD).
-  * Levenshtein-based "Did you mean?" suggestions.
-  * Memory-safe Lookup History with deletion state-machine.
-* **In-Reader Quick Settings (Aa) Overlay**:
-  * Adjusts fonts/sizes/margins/layouts directly over book text — no full-screen menu reload.
-  * Zero-heap formatting, deferred SD writes (flash-life protection), custom display buffering (no E-ink ghosting).
-
----
-
-## Coding Standards
-
-### Naming Conventions
-* Classes: PascalCase (`EpubReaderActivity`)
-* Methods/Variables: camelCase (`renderPage()`)
-* Constants: UPPER_SNAKE_CASE (`MAX_BUFFER_SIZE`)
-* Private Members: `memberVariable` (no prefix)
-* File Names: match class names (`EpubReaderActivity.cpp`)
-* Header guards: `#pragma once` for all headers.
-
-### Memory Safety and RAII
-* Prefer `std::unique_ptr`. Avoid `std::shared_ptr` (atomic overhead is wasted on a single-core RISC-V).
-* Use destructors for cleanup, but call `file.close()` / `vTaskDelete()` explicitly for deterministic resource release.
-
-### ESP32-C3 Platform Pitfalls
-
-#### `std::string_view` and Null Termination
-`string_view` is *not* null-terminated. Passing `.data()` to any C-style API (`drawText`, `snprintf`, `strcmp`, SdFat file paths) is UB when the view is a substring or a view of a non-null-terminated buffer.
-
+### `std::string_view` is NOT null-terminated
+Passing `.data()` to C APIs (`drawText`, `snprintf`, `strcmp`, SdFat paths) is UB.
 ```cpp
-// WRONG — UB if view is a substring:
-renderer.drawText(font, x, y, myView.data(), true);
-
+// WRONG: renderer.drawText(font, x, y, myView.data(), true);
 // CORRECT:
 renderer.drawText(font, x, y, std::string(myView).c_str(), true);
-
-// CORRECT, zero-alloc for short strings:
-char buf[64];
-snprintf(buf, sizeof(buf), "%.*s", (int)myView.size(), myView.data());
+// CORRECT zero-alloc:
+char buf[64]; snprintf(buf, sizeof(buf), "%.*s", (int)myView.size(), myView.data());
 ```
 
-#### `IRAM_ATTR` and Flash Cache Safety
-All code runs from flash via the instruction cache. During SPI flash ops (OTA write, SPIFFS commit, NVS update) the cache is briefly suspended. Any code that can execute during this window — ISRs in particular — must reside in IRAM, or it will silently crash.
+### `IRAM_ATTR` and flash cache safety
+During SPI flash ops (OTA, SPIFFS, NVS) the instruction cache is suspended. Any code that can run then (ISRs especially) must be in IRAM.
+- ISR handlers → `IRAM_ATTR`.
+- Data read by `IRAM_ATTR` code → `DRAM_ATTR` (flash-resident `static const` will fault).
+- Normal task code does NOT need `IRAM_ATTR`.
 
-```cpp
-void IRAM_ATTR gpioISR() { ... }
-static DRAM_ATTR uint32_t isrEventFlags = 0;  // never a flash const
-```
+### ISR vs task shared state
+`xSemaphoreTake()` cannot be called from ISR — will crash.
 
-Rules:
-- All ISR handlers: `IRAM_ATTR`
-- Data read by `IRAM_ATTR` code: `DRAM_ATTR` (a flash-resident `static const` will fault)
-- Normal task code does NOT need `IRAM_ATTR`
-
-#### ISR vs Task Shared State
-`xSemaphoreTake()` (mutex) **cannot** be called from ISR context — it will crash.
-
-| Direction | Correct primitive |
+| Direction | Primitive |
 |---|---|
 | ISR → task (data) | `xQueueSendFromISR()` + `portYIELD_FROM_ISR()` |
 | ISR → task (signal) | `xSemaphoreGiveFromISR()` + `portYIELD_FROM_ISR()` |
 | Task → task | `xSemaphoreTake()` / mutex |
-| Simple flag (single writer ISR) | `volatile bool` + `portENTER_CRITICAL_ISR()` |
+| Single-writer ISR flag | `volatile bool` + `portENTER_CRITICAL_ISR()` |
 
-#### RISC-V Alignment
-ESP32-C3 faults on unaligned multi-byte loads. Never cast a `uint8_t*` buffer to a wider pointer type and dereference. Use `memcpy`:
-
+### RISC-V alignment
+ESP32-C3 faults on unaligned multi-byte loads. Never cast `uint8_t*` → wider pointer and dereference. Use `memcpy`:
 ```cpp
-// WRONG — faults if buf is not 4-byte aligned:
-uint32_t val = *reinterpret_cast<const uint32_t*>(buf);
+uint32_t val; memcpy(&val, buf, sizeof(val));
+```
+Applies to cache deserialisation and `__attribute__((packed))` member access.
 
-// CORRECT:
-uint32_t val;
-memcpy(&val, buf, sizeof(val));
+### Template / `std::function` bloat
+`std::function<void()>` adds 2–4 KB per signature and heap-allocates its closure. Avoid in library code and render paths. Prefer plain function pointers or `struct { void* ctx; void (*fn)(void*); }`.
+
+---
+
+## Build System (PlatformIO)
+
+| Env | Purpose | Log Level |
+|---|---|---|
+| `default` | Local dev | 2 (serial debug on) |
+| `gh_release` | Production | 0 |
+| `gh_release_rc` | RC | 1 |
+| `slim` | Minimal, no serial | — |
+
+Files: `platformio.ini` (committed), `platformio.local.ini` (gitignored personal overrides, included via `extra_configs`), `partitions.csv` (flash layout).
+
+### Critical build flags (do not change lightly)
+```cpp
+-DEINK_DISPLAY_SINGLE_BUFFER_MODE=1   // 48 KB single FB
+-DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=1
+-DXML_CONTEXT_BYTES=1024 -DXML_GE=0   // EPUB XML cap + entity disable
+-DUSE_UTF8_LONG_NAMES=1
+-DPNG_MAX_BUFFERED_PIXELS=16416       // 2048px-wide PNG scanlines
+-DAALU_VERSION=\"...\"                // from [aalu] version
+-fno-exceptions -std=gnu++2a
+-Wl,--wrap=panic_print_backtrace,--wrap=panic_abort  // custom panic
 ```
 
-This applies to all cache deserialisation and any raw buffer-to-struct casting. `__attribute__((packed))` structs have the same hazard when accessed via member reference.
+### Pre-build scripts (`extra_scripts`)
+- `scripts/build_html.py` → `src/network/html/*.generated.h` from `data/html/`.
+- `scripts/gen_i18n.py` → I18n tables from `lib/I18n/translations/*.yaml`.
+- `scripts/patch_jpegdec.py`, `scripts/git_branch.py`.
 
-#### Template and `std::function` Bloat
-Each template instantiation generates a separate binary copy. `std::function<void()>` adds ~2–4 KB per unique signature and heap-allocates its closure. Avoid both in library code and any path called from the render loop:
+### SINGLE_BUFFER implications
+Only one framebuffer. Grayscale rendering needs `renderer.storeBwBuffer()` / `restoreBwBuffer()` (see `lib/GfxRenderer/GfxRenderer.cpp:439-440`).
 
-```cpp
-// Avoid:
-std::function<void()> callback;
-
-// Prefer:
-void (*callback)() = nullptr;
-
-// Member function + context:
-struct Callback { void* ctx; void (*fn)(void*); };
+### Commands
+```bash
+pio run                       # default build
+pio run -e gh_release         # production
+pio run -t upload             # build + flash
+pio run -t upload && pio device monitor
+pio device monitor            # basic
+python3 scripts/debugging_monitor.py [/dev/cu.usbmodemXXXX]  # enhanced, decodes backtraces
+pio check                     # cppcheck
+find src lib -name "*.cpp" -o -name "*.h" | xargs clang-format -i
+git submodule update --init --recursive  # required for open-x4-sdk
 ```
 
-When a template is necessary, limit instantiations: use explicit template instantiation in a `.cpp` to prevent duplicates across translation units.
+Port detection: macOS `/dev/cu.usbmodem*`, Linux `/dev/ttyUSB*`/`ttyACM*`, Windows `COMx`.
 
-### Error Handling Philosophy
-Source: [`src/main.cpp:132-143`](../src/main.cpp), [`lib/GfxRenderer/GfxRenderer.cpp:10`](../lib/GfxRenderer/GfxRenderer.cpp)
+---
 
-Pattern hierarchy:
-1. **`LOG_ERR` + return false** (90% case): `LOG_ERR("MOD", "Failed: %s", reason); return false;`
-2. **`LOG_ERR` + fallback**: `LOG_ERR("MOD", "Unavailable"); useDefault();`
-3. **`assert(false)`**: only for fatal "impossible" states (e.g. missing framebuffer).
+## Architecture
+
+```
+src/
+├── main.cpp                    # entry + global font init
+├── CrossPointSettings.h        # user settings (legacy name)
+├── MappedInputManager.cpp/.h   # logical button → hardware
+├── fontIds.h
+├── activities/                 # UI screens (Activity lifecycle)
+│   ├── home/                   # HomeActivity, FileBrowser, RecentBooks
+│   ├── reader/                 # EpubReader, TxtReader, XtcReader,
+│   │                           # Dictionary*, KOReaderSync, etc.
+│   ├── settings/  stats/  network/  browser/  boot_sleep/  util/
+└── network/html/               # HTML sources + generated headers
+lib/
+├── hal/                        # HalDisplay, HalGPIO, HalStorage
+├── Epub/                       # parsing + section caching
+├── GfxRenderer/                # e-ink primitives
+├── EpdFont/                    # font conversion + builtins
+├── UITheme/                    # themed UI (GUI macro)
+└── I18n/                       # translations YAML + generated
+open-x4-sdk/                    # submodule
+docs/  scripts/  English-Dictionary/  partitions.csv  platformio.ini
+```
+
+### HAL — always use, never the SDK classes directly
+| HAL | Wraps | Singleton |
+|---|---|---|
+| `HalDisplay` | `EInkDisplay` | — |
+| `HalGPIO` | `InputManager` | — |
+| `HalStorage` | `SDCardManager` | `Storage` |
+
+```cpp
+#include <HalStorage.h>
+FsFile file;  // SdFat FsFile, NOT Arduino File
+if (Storage.openFileForRead("MODULE", "/path/file.bin", file)) {
+  // read
+  file.close();   // explicit close required
+}
+```
+
+### Singletons
+```cpp
+#define SETTINGS  CrossPointSettings::getInstance()  // user settings
+#define APP_STATE CrossPointState::getInstance()     // runtime state
+#define GUI       UITheme::getInstance()             // theme
+#define Storage   HalStorage::getInstance()
+#define I18N      I18n::getInstance()
+```
+
+### Activity lifecycle
+Activities are heap-allocated, deleted on exit (see `src/main.cpp:132-143`).
+```cpp
+void onEnter() { Activity::onEnter(); /* alloc, tasks */ render(); }
+void loop()    { mappedInput.update(); /* input */ }
+void onExit()  { /* vTaskDelete BEFORE destruction; free; close files */ Activity::onExit(); }
+```
+Anything allocated in `onEnter()` MUST be freed in `onExit()`. Tasks MUST be `vTaskDelete()`d before activity destruction. File handles MUST be closed.
+
+### FreeRTOS tasks
+Pattern: `xTaskCreate(&taskTrampoline, "Name", stackBytes, this, 1, &handle)`.
+Stack sizing (BYTES): 2048 simple render, 4096 network/EPUB. Monitor `uxTaskGetStackHighWaterMark()`. < 512 B headroom → bump stack. Use mutex for shared state.
+
+### Fonts
+~80+ global `EpdFont`/`EpdFontFamily` objects in `src/main.cpp:40-115`. Stored in flash; rendering data caches in DRAM on first use. Font IDs in `src/fontIds.h`. `OMIT_FONTS` reduces binary for minimal builds.
+
+---
+
+## AALU-Specific Features (on top of CrossPoint)
+- **UI themes** (`src/activities/home/`, `lib/UITheme/`): Classic, Lyra, Recent6 (3×2 grid, memory-safe). Asymmetric bottom menu, cascading cover-resolution fallbacks (anti-ghosting).
+- **Apps submenu** (`AppsActivity.*`): File Transfer, Stats, OPDS hub.
+- **KOReader Sync** (`KOReaderSyncActivity.*`): heuristic paragraph-level sync, prevents XML parser crashes on remote.
+- **Reading Stats v2.5** (`src/activities/stats/`): global dashboard, Reading/Finished filter (Right button), per-book analytics, 3-line title wrapping, **binary migration v4/v5 → v6 for `stats.bin`** — bump version + add migration code if layout changes.
+- **Stability**: deep-sleep forced session save; 3-minute session threshold prevents short-cycle corruption.
+- **Offline English Dictionary** (`Dictionary*Activity.*`, `English-Dictionary/`): pixel-perfect selection, StarDict (`dictionary.dict`+`.idx`), Levenshtein "did you mean?", lookup history.
+- **In-Reader Quick Settings (Aa) overlay**: zero-heap formatting, deferred SD writes (flash-life), custom buffering to prevent ghosting.
+
+---
+
+## Coding Standards
+- Naming: PascalCase classes, camelCase methods/vars, UPPER_SNAKE constants, `memberVariable` (no prefix), `#pragma once`.
+- Memory: prefer `std::unique_ptr`; avoid `std::shared_ptr` (single-core RISC-V wastes atomics). Explicit `file.close()` / `vTaskDelete()` for deterministic release.
+- **Private methods below all public ones.**
+
+### Error handling
+- NO C++ exceptions. NO `abort()`. ALWAYS log before error return.
+1. **`LOG_ERR + return false`** (90%): `LOG_ERR("MOD", "Failed: %s", reason); return false;`
+2. **`LOG_ERR + fallback`**: log and `useDefault()`.
+3. **`assert(false)`**: only for fatal impossible states (e.g. missing framebuffer).
 4. **`ESP.restart()`**: only for recovery (e.g. OTA complete).
 
-Rules: **NO exceptions**, **NO `abort()`**, **ALWAYS log before error return**.
-
-### Acceptable malloc/free Patterns
-Despite "prefer stack allocation," `malloc` is acceptable for:
-1. Large temporary buffers (> 256 bytes — won't fit on stack).
-2. One-time allocations during activity initialisation.
-3. Bitmap rendering buffers (variable size, used briefly).
-
+### Acceptable malloc patterns
+For >256 B buffers, one-time activity init, and variable-size bitmap buffers:
 ```cpp
 auto* buffer = static_cast<uint8_t*>(malloc(bufferSize));
-if (!buffer) {
-  LOG_ERR("MODULE", "malloc failed: %d bytes", bufferSize);
-  return false;
-}
+if (!buffer) { LOG_ERR("MODULE", "malloc failed: %d", bufferSize); return false; }
 processData(buffer, bufferSize);
-free(buffer);
-buffer = nullptr;
+free(buffer); buffer = nullptr;
 ```
-
-Rules: ALWAYS check for nullptr; free immediately after use; set to nullptr; document why stack allocation was rejected.
-
-Examples in codebase:
-- Cover image buffers: [`HomeActivity.cpp:166`](../src/activities/home/HomeActivity.cpp)
-- Text chunk buffers: [`TxtReaderActivity.cpp:259`](../src/activities/reader/TxtReaderActivity.cpp)
-- Bitmap rendering: [`GfxRenderer.cpp:439-440`](../lib/GfxRenderer/GfxRenderer.cpp)
-- OTA update buffer: [`OtaUpdater.cpp:40`](../src/network/OtaUpdater.cpp)
+Examples in repo: `HomeActivity.cpp:166`, `TxtReaderActivity.cpp:259`, `GfxRenderer.cpp:439-440`, `OtaUpdater.cpp:40`.
 
 ---
 
-## UI and Orientation Guidelines
+## UI & Orientation
+- No hardcoded 800/480 — use `renderer.getScreenWidth()/getScreenHeight()`.
+- Use `renderer.getOrientedViewableTRBL()` to respect bezel margins.
+- **Test all 4 orientations** (Portrait, Inverted, Landscape CW/CCW). Many bugs appear in only one.
 
-### Orientation-Aware Logic
-* **No hardcoding**: Never assume 800 or 480. Use `renderer.getScreenWidth()` / `renderer.getScreenHeight()`.
-* **Viewable area**: Use `renderer.getOrientedViewableTRBL()` to stay within physical bezel margins.
-* **Test in all four orientations**: Portrait, Inverted Portrait, Landscape CW, Landscape CCW. Many bugs only appear in one.
+### Logical button mapping (`src/MappedInputManager.cpp:20-55`)
+Physical fixed: `Button::Up` → `HalGPIO::BTN_UP`, `Button::Down` → `HalGPIO::BTN_DOWN`.
+User-remappable (front): `Button::Back/Confirm/Left/Right` ↔ `SETTINGS.frontButton*`.
+Reader (swappable): `Button::PageBack`/`PageForward` via `SETTINGS.sideButtonLayout`.
+**Use `MappedInputManager::Button::*` enums; never raw `HalGPIO::BTN_*` (except in `ButtonRemapActivity`).**
 
-### Logical Button Mapping
-Source: [`src/MappedInputManager.cpp:20-55`](../src/MappedInputManager.cpp)
-
-Physical button positions are fixed; logical functions change with user settings and orientation.
-
-* **Physical fixed**: `Button::Up` → `HalGPIO::BTN_UP`, `Button::Down` → `HalGPIO::BTN_DOWN`.
-* **User-remappable** (front buttons): `Button::Back/Confirm/Left/Right` ↔ `SETTINGS.frontButton*`.
-* **Reader-specific** (page nav, swappable): `Button::PageBack` / `Button::PageForward` via `SETTINGS.sideButtonLayout`.
-
-**Rule**: Always use `MappedInputManager::Button::*` enums, never raw `HalGPIO::BTN_*` indices (except in `ButtonRemapActivity`).
-
-### UITheme (the `GUI` macro)
-All UI rendering must go through the `GUI` macro (UITheme). Do not hardcode fonts, colours, or positioning — this is what keeps AALU's themes (Classic, Lyra, Recent6) working consistently across orientations.
+### UITheme
+All UI rendering through `GUI` macro. Don't hardcode fonts/colours/positioning — that's what keeps Classic/Lyra/Recent6 consistent across orientations.
 
 ---
 
-## Common Patterns
+## Testing Workflow (MANDATORY after every code change)
 
-### Singleton Access
-```cpp
-#define SETTINGS CrossPointSettings::getInstance()  // User settings (name retained)
-#define APP_STATE CrossPointState::getInstance()    // Runtime state (name retained)
-#define GUI UITheme::getInstance()                  // Current theme
-#define Storage HalStorage::getInstance()           // SD card I/O
-#define I18N I18n::getInstance()                    // Internationalisation
-```
-
-### Activity Lifecycle and Memory Management
-Source: [`src/main.cpp:132-143`](../src/main.cpp)
-
-Activities are **heap-allocated** and **deleted on exit**.
-
-```cpp
-void exitActivity() {
-  if (currentActivity) {
-    currentActivity->onExit();
-    delete currentActivity;
-    currentActivity = nullptr;
-  }
-}
-
-void enterNewActivity(Activity* activity) {
-  currentActivity = activity;
-  currentActivity->onEnter();
-}
-```
-
-Memory implications:
-- Any memory allocated in `onEnter()` MUST be freed in `onExit()`.
-- FreeRTOS tasks MUST be `vTaskDelete()`d in `onExit()` BEFORE activity destruction.
-- File handles MUST be closed in `onExit()`.
-
-```cpp
-void onEnter() { Activity::onEnter(); /* alloc: buffer, tasks */ render(); }
-void loop()    { mappedInput.update(); /* handle input */ }
-void onExit()  { /* vTaskDelete, free, close */ Activity::onExit(); }
-```
-
-### FreeRTOS Task Guidelines
-Pattern: `xTaskCreate(&taskTrampoline, "Name", stackSize, this, 1, &handle)`
-
-Stack sizing (BYTES, not words):
-- **2048**: simple rendering (most activities)
-- **4096**: network, EPUB parsing
-- Monitor with `uxTaskGetStackHighWaterMark()` if crashes appear.
-
-Always `vTaskDelete()` in `onExit()` before destruction. Use a mutex for shared state.
-
-### Global Font Loading
-Source: [`src/main.cpp:40-115`](../src/main.cpp)
-
-All fonts are loaded as global static objects at startup:
-- Bookerly, Noto Sans, OpenDyslexic — multiple sizes × 4 styles each.
-- Ubuntu UI fonts — 10, 12 pt × 2 styles.
-
-Total: ~80+ global `EpdFont` / `EpdFontFamily` objects. Stored in Flash (marked `static const` in `lib/EpdFont/builtinFonts/`); rendering data caches in DRAM on first use. `OMIT_FONTS` reduces binary size for minimal builds. Font IDs in [`src/fontIds.h`](../src/fontIds.h).
-
-```cpp
-#include "fontIds.h"
-renderer.insertFont(FONT_UI_MEDIUM, ui12FontFamily);
-renderer.drawText(FONT_UI_MEDIUM, x, y, "Hello", true);
-```
-
----
-
-## Building, Flashing, Debugging
-
-### Prerequisites
-* PlatformIO Core (`pio`) or VS Code + PlatformIO IDE
-* Python 3.8+
-* USB-C cable
-* For the debug monitor: `python3 -m pip install pyserial colorama matplotlib`
-
-### Build Commands
+Run all four in order before declaring complete, proposing a commit, or handing off. Mirrors CI on `master` — green locally = green CI = release fires.
 
 ```bash
-# Build (default env)
+# 1. Format (matches clang-format CI job). Requires clang-format-21 on PATH.
+#    macOS: brew install llvm@21 && PATH="/opt/homebrew/opt/llvm@21/bin:$PATH"
+./bin/clang-format-fix
+git diff --exit-code   # MUST be clean; if not, stage formatter changes
+
+# 2. Static analysis (matches cppcheck CI)
+pio check --fail-on-defect medium --fail-on-defect high
+
+# 3. Build default env (matches build CI)
 pio run
 
-# Build + flash to device
-pio run -t upload
-
-# Build a specific environment
-pio run -e gh_release          # production
-pio run -e gh_release_rc       # release candidate
-pio run -e slim                # minimal, no serial logging
-
-# Clean
-pio run -t clean
-
-# Upload + monitor in one go
-pio run -t upload && pio device monitor
+# 4. Host tests (compile + run on macOS/Linux, no device)
+bash test/run_differential_rounding_test.sh
+bash test/run_hyphenation_eval.sh
 ```
 
-VS Code: Build (✓), Upload (→), Monitor (🔌) on the PlatformIO toolbar.
+Rules: all four green or it's not done. Fix warnings, don't paper over. `pio check` `[low:*]` hints are advisory; `medium`/`high` fail. If `clang-format-fix` rewrites files, include them in the commit. Most UI work isn't covered by host tests — say so explicitly when reporting status.
 
-### Submodules
-This repo uses `open-x4-sdk` as a git submodule. After cloning:
-```bash
-git submodule update --init --recursive
-```
-Or clone with `git clone --recursive ...`.
+### AI-agent scope (you verify)
+1. Build (`pio run -t clean && pio run`, 0 errors, 0 warnings).
+2. Host tests (both scripts).
+3. `pio check` + `clang-format`.
+4. Commit format (`feat:`/`fix:`), no gitignored files staged.
+5. Fix CI failures before review.
+6. Inspect orientation switch/case coverage.
 
-### Monitoring and Debugging
+### Human-tester scope (flag for user)
+- Real hardware test, all 4 orientations.
+- `ESP.getFreeHeap()` > 50 KB; no leaks across activity transitions.
+- If EPUB code changed: delete `.crosspoint/`, verify clean re-parse.
+- AALU flows: Quick Settings overlay, Dictionary lookup, KOReader sync, Stats v2.5.
 
-```bash
-# Enhanced colour-coded monitor (recommended)
-python3 scripts/debugging_monitor.py
-
-# macOS — pass the port explicitly:
-python3 scripts/debugging_monitor.py /dev/cu.usbmodem2101
-
-# Standard PlatformIO monitor (basic)
-pio device monitor
-```
-
-**Port detection**:
-- macOS: `ls /dev/cu.usbmodem*`
-- Linux: `ls /dev/ttyUSB* /dev/ttyACM*` or `dmesg | grep tty`
-- Windows: `mode` (cmd) — ports appear as `COMx`
-
-### Code Quality
-
-```bash
-# Static analysis (cppcheck via PlatformIO)
-pio check
-
-# Format (clang-format) — works on all platforms
-find src lib -name "*.cpp" -o -name "*.h" | xargs clang-format -i
+### Live debugging snippets
+```cpp
+LOG_DBG("MEM", "Free: %d", ESP.getFreeHeap());
+LOG_DBG("TASK", "Stack hi-water: %d", uxTaskGetStackHighWaterMark(nullptr));
+logSerial.flush();   // before suspected crash
 ```
 
-### Debugging Crashes
-Common causes:
+### Common crash causes
+1. **OOM**: log free heap; verify buffers freed in `onExit()`; look for >10 KB allocs near crash.
+2. **Stack overflow**: high-water log; bump 2048→4096; move locals to heap.
+3. **Use-after-free**: `vTaskDelete()` BEFORE destruction; `nullptr` after `free()`.
+4. **Corrupt cache**: delete `.crosspoint/`; check format versions.
+5. **Watchdog**: tight loops need `vTaskDelay(1)`; no blocking I/O.
 
-1. **Out of memory** (most common):
-   ```cpp
-   LOG_DBG("MEM", "Free heap: %d bytes", ESP.getFreeHeap());
-   ```
-   Verify buffers are freed in `onExit()`. Look for >10 KB allocations near the crash.
+### CI/CD workflows
+| Workflow | File | Purpose |
+|---|---|---|
+| Build Check | `ci.yml` | Compile |
+| Format Check | `pr-formatting-check.yml` | clang-format |
+| Release | `release.yml` | Production |
+| RC | `release_candidate.yml` | RC |
 
-2. **Stack overflow**:
-   ```cpp
-   LOG_DBG("TASK", "Stack high water: %d", uxTaskGetStackHighWaterMark(taskHandle));
-   ```
-   Bump task stack 2048 → 4096; move large locals to heap.
-
-3. **Use-after-free**: Activity deleted but task still running. Always `vTaskDelete()` in `onExit()` BEFORE destruction. Set pointers to `nullptr` after `free()`.
-
-4. **Corrupt cache files**: Delete `.crosspoint/` on the SD card and let the device re-parse. Check format versions in `docs/file-formats.md`.
-
-5. **Watchdog timeout**: Loop/task blocked > 5 s. Add `vTaskDelay(1)` in tight loops; check for blocking I/O.
-
-Verification:
-1. Capture serial output for stack traces (`debugging_monitor.py` decodes addresses).
-2. Monitor heap before/after suspicious operations.
-3. Use `vTaskList()` to verify task deletion.
-4. Test with `LOG_LEVEL=2` (debug logging on, default env).
-
-### Reverting to Stock Firmware
-If you need to roll back to Xteink's official firmware: <https://xteink.dve.al/>.
+Fix CI failures before review.
 
 ---
 
-## Generated Files and Build Artefacts
+## Generated files — NEVER hand-edit
 
-**NEVER manually edit these — they are regenerated**:
+1. **HTML headers**: `src/network/html/*.generated.h` ← `data/html/*.html` via `scripts/build_html.py`. Edit source HTML, `pio run` regenerates. Commit only source.
+2. **I18n**: `lib/I18n/I18nKeys.h`, `I18nStrings.h`, `I18nStrings.cpp` ← `lib/I18n/translations/*.yaml` via `scripts/gen_i18n.py`. Required keys: `_language_name`, `_language_code`, `_order`, then `STR_*`. English is reference; missing keys fall back. Run `python scripts/gen_i18n.py lib/I18n/translations lib/I18n/` or just `pio run`. **Commit YAML only — generated files gitignored.**
+3. **Build artefacts**: `.pio/`, `build/`, `*.generated.h`, `compile_commands.json` (all gitignored).
+4. **Fonts**: source → `lib/EpdFont/fontsrc/` (gitignored). Conversion script (see `lib/EpdFont/README`). Add global object in `src/main.cpp`, ID in `src/fontIds.h`.
 
-1. **HTML headers** (generated by `scripts/build_html.py`):
-   - `src/network/html/*.generated.h`
-   - Source: HTML in `data/html/` (or wherever the script reads from)
-   - To modify: edit source HTML, not the generated `.h`.
-2. **I18n headers** (generated by `scripts/gen_i18n.py`):
-   - `lib/I18n/I18nKeys.h`, `I18nStrings.h`, `I18nStrings.cpp`
-   - Source: `lib/I18n/translations/*.yaml`
-   - To modify: edit YAML, then `python scripts/gen_i18n.py lib/I18n/translations lib/I18n/`.
-   - **Commit YAML only.** All three generated files are gitignored and regenerated each build.
-3. **Build artefacts** (gitignored):
-   - `.pio/`, `build/`, `*.generated.h`, `compile_commands.json`
-
-### Modifying generated content
-
-**HTML pages**:
-1. Edit source: `data/html/<pagename>.html`
-2. `pio run` (auto-runs `build_html.py`)
-3. Generated header updates automatically.
-4. Commit ONLY the source HTML.
-
-**Translations (i18n)**:
-1. Edit/add YAML in `lib/I18n/translations/<language>.yaml`. Required keys: `_language_name`, `_language_code`, `_order`, then `STR_*` entries. English (`english.yaml`) is the reference — missing keys fall back to English.
-2. Run `python scripts/gen_i18n.py lib/I18n/translations lib/I18n/` (or just `pio run` to trigger it via `extra_scripts`).
-3. Commit YAML only.
-
-In code:
 ```cpp
 #include <I18n.h>
 renderer.drawText(FONT_UI, x, y, tr(STR_LOADING), true);
 ```
 
-**Fonts**:
-1. Source fonts → `lib/EpdFont/fontsrc/` (gitignored)
-2. Run conversion script (see `lib/EpdFont/README`)
-3. Add global font object in `src/main.cpp`
-4. Add font ID in `src/fontIds.h`
-
 ---
 
-## Local Development Configuration
-
-### `platformio.local.ini` (gitignored, personal overrides)
-
-`platformio.ini` already includes it via `extra_configs = platformio.local.ini`. Use it for:
-- Serial port (`upload_port`, `monitor_port`)
-- Personal debug flags
-- Local build optimisations
-
-```ini
-# platformio.local.ini (gitignored)
-[env:default]
-upload_port = /dev/cu.usbmodem2101    # macOS
-monitor_port = /dev/cu.usbmodem2101
-
-build_flags =
-  ${base.build_flags}
-  -DMY_DEBUG_FLAG=1
-```
-
-Rules:
-- **NEVER commit** `platformio.local.ini`.
-- **NEVER put** personal info (serial ports, secrets) in `platformio.ini`.
-- Use `${base.build_flags}` to extend base flags, not replace them.
-
----
-
-## Cache Management and Invalidation
-
-### Cache Structure on SD Card
-**Location**: `.crosspoint/` directory on SD card root (name retained for backward compatibility).
+## Cache (`.crosspoint/` on SD root — legacy name retained)
 
 ```
 .crosspoint/
 ├── epub_<hash>/
-│   ├── progress.bin     # Reading position
-│   ├── cover.bmp        # Multiple resolutions generated
-│   ├── book.bin         # Metadata (title, author, spine, ToC)
-│   └── sections/
-│       ├── 0.bin
-│       └── ...
-├── stats.bin            # Global + per-book reading statistics (AALU v2.5)
-└── system/
-    └── BasicCover.bmp   # Fallback for missing covers
+│   ├── progress.bin      # reading position
+│   ├── cover.bmp         # multi-res
+│   ├── book.bin          # metadata (title, author, spine, ToC)
+│   └── sections/*.bin
+├── stats.bin             # global + per-book stats (v6)
+└── system/BasicCover.bmp # fallback
 ```
+Hash: `std::hash<std::string>{}(filepath)` — move/rename → new hash → lost progress.
 
-Hash: `std::hash<std::string>{}(filepath)`. Moving/renaming the EPUB → new hash → lost progress.
+### Invalidation triggers
+1. File format version bump (`book.bin`, `section.bin`, `stats.bin`).
+2. Render settings: font/size/spacing/margin.
+3. Viewport: orientation or resolution.
+4. Book file modified/moved/renamed (new hash).
 
-### Cache Invalidation Triggers
-The cache is auto-invalidated when:
-1. **File format version changes** (see `docs/file-formats.md`) — `book.bin`, `section.bin`, `stats.bin` version bumps.
-2. **Render settings change**: font family/size, line spacing, paragraph spacing, screen margin.
-3. **Viewport changes**: orientation or display resolution.
-4. **Book file modified**: moved, renamed, or content changed (new hash).
-
-### Manual Cache Clear
+### Manual clear
 ```bash
-# Nuke everything (full regen)
-rm -rf /path/to/sd/.crosspoint/
-
-# One book
-rm -rf /path/to/sd/.crosspoint/epub_<hash>/
-
-# Keep progress, drop rendered sections only
-rm -rf /path/to/sd/.crosspoint/epub_<hash>/sections/
+rm -rf /path/to/sd/.crosspoint/                # full
+rm -rf /path/to/sd/.crosspoint/epub_<hash>/    # one book
+rm -rf /path/to/sd/.crosspoint/epub_<hash>/sections/  # keep progress, drop sections
 ```
 
-When to clear:
-- EPUB parsing errors after changes to `lib/Epub/`
-- Corrupt rendering (missing text, wrong layout)
-- Testing cache generation logic
-- After modifying `Section.cpp`, `BookMetadataCache.cpp`, or `CrossPointSettings` render fields.
+### Versions (verify in source before changing)
+- `book.bin`: v5 (`lib/Epub/Epub/BookMetadataCache.cpp`)
+- `section.bin`: v12 (`lib/Epub/Epub/Section.cpp`)
+- `stats.bin`: v6 with v4/v5 → v6 migration engine
 
-### File Format Versioning
-Source: `lib/Epub/Epub/Section.cpp`, `lib/Epub/Epub/BookMetadataCache.cpp`, plus `stats.bin` in the stats activities.
-
-Approximate current versions (verify against the source before changing):
-- `book.bin`: v5
-- `section.bin`: v12
-- `stats.bin`: v6 (with v4/v5 → v6 migration engine — AALU addition)
-
-Rules:
-1. ALWAYS bump the version constant BEFORE changing on-disk layout.
-2. Version mismatch → cache auto-invalidated and regenerated (or migrated for stats).
-3. Document the change in `docs/file-formats.md`.
-
-```cpp
-// Section.cpp — example bump
-static constexpr uint8_t SECTION_FILE_VERSION = 13;  // was 12
-```
+**Rules**: bump version BEFORE layout change; mismatch → auto-invalidate or migrate; document in `docs/file-formats.md`.
 
 ---
 
 ## Git Workflow
 
-### Repository Detection
-**ALWAYS verify repo context before git operations.** AALU is typically a fork — `origin` is your fork, `upstream` is the AALU repo.
-
+AALU is typically a fork — `origin` = your fork, `upstream` = AALU. Always verify:
 ```bash
 git branch --show-current
 git remote -v
-git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'
 git status --short
 ```
 
-### Operation Rules
-1. Never assume branch names: `git push origin $(git branch --show-current)`.
-2. Never assume remote permissions:
-   - Forked: push to `origin`, PR to `upstream`.
-   - Direct: may push feature branches to `upstream`.
-   - When in doubt, ASK.
-3. Sync before starting work:
-   ```bash
-   git fetch upstream
-   git merge upstream/main   # or upstream/master
-   ```
-
-### Branch Naming
-```
-feature/<short-description>       # New features
-fix/<issue-number>-<description>  # Bug fixes
-refactor/<component-name>         # Refactoring
-docs/<topic>                      # Documentation
-```
-
-### Commit Message Format
-```
-<type>: <short summary, 50 chars max>
-
-<optional body>
-```
-Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`.
-
-Example:
-```
-feat: add real-time SD download progress bar
-
-Implements progress tracking for book downloads using
-UITheme progress bar component with heap-safe updates.
-
-Tested in all 4 orientations with 5MB+ files.
-```
-
-### When to Commit
-DO commit when:
-- User explicitly requests it.
-- Feature is complete + tested on hardware.
-- Bug fix is verified.
-- Refactor preserves all behaviour.
-- `pio run` succeeds (no errors/warnings).
-
-DO NOT commit when:
-- Untested on hardware.
-- Build fails or warns.
-- Mid-experiment.
-- User has not asked.
-- `.gitignore`-excluded files would be staged. ALWAYS run `git status` first and cross-check (e.g. `*.generated.h`, `.pio/`, `compile_commands.json`, `platformio.local.ini`).
-
-**If uncertain, ASK before committing.**
-
----
-
-## Testing and Verification Workflow
-
-### MANDATORY after every code change
-Before declaring a task complete, proposing a commit, or handing off to the user, run **all four** of these — in this order. They mirror what CI runs on `master`, so green locally = green in CI = release workflow fires.
-
-```bash
-# 1. Format check — must produce no diff, exactly what the `clang-format` CI job runs.
-#    Requires clang-format-21 on PATH. On macOS: `brew install llvm@21` then
-#    `PATH="/opt/homebrew/opt/llvm@21/bin:$PATH"` (or persist it in your shell).
-./bin/clang-format-fix
-git diff --exit-code   # MUST be clean. If not, the formatter changed files — stage them.
-
-# 2. Static analysis — matches the `cppcheck` CI job.
-pio check --fail-on-defect medium --fail-on-defect high
-
-# 3. Build (default env) — matches the `build` CI job.
-pio run
-
-# 4. Host tests — compile + run on macOS/Linux, no device required.
-bash test/run_differential_rounding_test.sh
-bash test/run_hyphenation_eval.sh
-```
-
 Rules:
-- All four must pass. Do NOT declare a task complete, propose a commit, or hand off until they're all green.
-- If `pio run` warns or errors, fix it — do not paper over warnings.
-- If a host test fails, treat it as blocking.
-- If `git diff --exit-code` fails after `clang-format-fix`, the formatter rewrote files; include those changes in your commit.
-- `pio check` is allowed to print `[low:*]` style hints — those are advisory. Only `medium` and `high` defects fail.
-- If your change touches a path covered by neither host test (most UI work), say so explicitly when reporting status.
+1. No assumed branch names: `git push origin $(git branch --show-current)`.
+2. No assumed remote permissions: forked → push to `origin`, PR to `upstream`. Ask when unsure.
+3. Sync before work: `git fetch upstream && git merge upstream/main`.
 
-Skipping any of the four is how `master` ends up red and the Release workflow gets skipped — which is the actual cause when "the release isn't publishing."
+Branch naming: `feature/<desc>`, `fix/<issue>-<desc>`, `refactor/<component>`, `docs/<topic>`.
 
-### AI-agent scope (you can verify)
-1. ✅ **Build**: `pio run -t clean && pio run` (0 errors, 0 warnings) — required after every change
-2. ✅ **Host tests**: `bash test/run_differential_rounding_test.sh` and `bash test/run_hyphenation_eval.sh` — required after every change
-3. ✅ **Quality**: `pio check` + `find src lib -name "*.cpp" -o -name "*.h" | xargs clang-format -i`
-4. ✅ **Format**: commit messages (`feat:` / `fix:`); no gitignored files staged
-5. ✅ **CI**: fix GitHub Actions failures before review
-6. ✅ **Code review**: orientation-aware logic correct in all four modes (inspect switch/case coverage)
+Commit format: `<type>: <50-char summary>` + optional body. Types: `feat fix refactor docs test chore perf`.
 
-### Human-tester scope (flag for the user)
-6. 🔲 **Device**: test on actual hardware
-7. 🔲 **Orientations**: verify all four (Portrait, Inverted, Landscape CW, CCW)
-8. 🔲 **Heap**: `ESP.getFreeHeap()` > 50 KB; no leaks across activity transitions
-9. 🔲 **Cache**: if EPUB code changed, delete `.crosspoint/` and verify clean re-parse
-10. 🔲 **AALU-specific flows**: Quick Settings (Aa) overlay, Dictionary lookup, KOReader sync, Stats v2.5 dashboard
-
-### CI/CD
-GitHub Actions (`.github/workflows/`):
-
-| Workflow | File | Purpose |
-|---|---|---|
-| Build Check | `ci.yml` | Compile verification |
-| Format Check | `pr-formatting-check.yml` | clang-format compliance |
-| Release | `release.yml` | Production releases |
-| RC | `release_candidate.yml` | Release candidates |
-
-Fix CI failures BEFORE requesting review. Format failure → run `clang-format` locally.
+**Do commit** when user asks AND: feature tested on hardware, fix verified, refactor preserves behaviour, `pio run` clean.
+**Do NOT commit** when untested, build fails/warns, mid-experiment, user hasn't asked, or `.gitignore`d files would be staged (`*.generated.h`, `.pio/`, `compile_commands.json`, `platformio.local.ini`). **Always `git status` first.** If uncertain, ASK.
 
 ---
 
-## Serial Monitoring and Live Debugging
+## Local Dev Config (`platformio.local.ini`, gitignored)
 
-```bash
-# Enhanced (recommended) — colour-coded, decoded backtraces
-python3 scripts/debugging_monitor.py [/dev/cu.usbmodemXXXX]
-
-# Standard
-pio device monitor
+```ini
+[env:default]
+upload_port = /dev/cu.usbmodem2101    # macOS example
+monitor_port = /dev/cu.usbmodem2101
+build_flags =
+  ${base.build_flags}
+  -DMY_DEBUG_FLAG=1
 ```
-
-Live debugging snippets:
-```cpp
-LOG_DBG("MEM", "Free: %d", ESP.getFreeHeap());                       // every 5s
-LOG_DBG("TASK", "Stack hi-water: %d", uxTaskGetStackHighWaterMark(nullptr));
-logSerial.flush();   // force output before suspected crash
-```
-
-`< 512 bytes` stack high-water → bump task stack.
+NEVER commit. NEVER put serial ports or secrets in `platformio.ini`. Use `${base.build_flags}` to extend, not replace.
 
 ---
 
-## Browser-based Emulator
+## Browser Emulator (`emulator/`)
 
-A Docker-packaged emulator lives in `emulator/`. **Honest status: scaffolding.** v0 is a Python stub that proves the WebSocket protocol and SD-card mount work end to end — `src/` does not yet run natively. Useful right now for iterating on web frontend / protocol; **not** a substitute for hardware testing.
-
-### Running it
+**Honest status: scaffolding.** v0 Python stub proves the WebSocket protocol and SD bind-mount end-to-end. `src/` does NOT run natively yet. Useful for web frontend / protocol iteration; **not** a hardware substitute.
 
 ```bash
-make emulator           # foreground (Ctrl-C to stop)
+make emulator           # foreground
 make emulator-detached  # background
-make emulator-logs      # tail container logs
-make emulator-stop      # stop container
-make emulator-rebuild   # force clean rebuild
-make emulator-clean     # nuke containers, volumes, build cache
+make emulator-logs / stop / rebuild / clean
 ```
+Open <http://localhost:8080>. Requires Docker.
 
-Then open <http://localhost:8080>. Requires Docker Desktop (or Docker Engine + Compose v2).
+Books: drop `.epub` into `emulator/sdcard/` (bind-mounted to `/sdcard`, auto-created, gitignored at both levels).
 
-### Putting books on it
+NOT replaced by emulator: e-ink ghosting/refresh, 380 KB RAM ceiling, FreeRTOS scheduling, Wi-Fi/OTA/OPDS/battery, cache binary fidelity (lock to 800×480 + same render settings for cache interchange). 4-orientation hardware checklist still required.
 
-Drop `.epub` files into `emulator/sdcard/`. That folder:
-- Is bind-mounted into the container at `/sdcard`.
-- Is auto-created by `make emulator` on first run.
-- Is gitignored at both `emulator/.gitignore` and the root `.gitignore` — SD card contents cannot be committed by accident.
-
-When the real native build lands, it will read from this same path. You can copy a real SD card's contents in (including `.crosspoint/` cache) — but see the cache-compatibility caveat below.
-
-### What the emulator does NOT replace
-
-Hard fidelity gaps:
-- **No e-ink ghosting / refresh latency** — canvas repaints instantly.
-- **No 380 KB RAM ceiling** — host has GB; leaks pass silently.
-- **No FreeRTOS scheduling** — host threads, different semantics.
-- **No Wi-Fi / OTA / OPDS / battery**.
-- **Cache binary layout** is tied to font/size/margin/orientation — keep emulator locked to 800×480 + same render settings for cache interchange.
-
-This means the emulator is useful for **UI, EPUB, dictionary, and stats logic iteration** — but the four-orientation hardware checklist in [Testing and Verification Workflow](#testing-and-verification-workflow) is still required before declaring any visual or input change done.
-
-### Architecture
-
-See `emulator/README.md` for the WebSocket protocol (1bpp framebuffer over binary frames, JSON for control) and the next concrete step (HAL shims + CMake host build of `src/` + `lib/`).
+See `emulator/README.md` for protocol details.
 
 ---
 
-Philosophy: **We are building a dedicated e-reader, not a Swiss Army knife.** If a feature adds RAM pressure without significantly improving the reading experience, it is Out of Scope. AALU's added features (Dictionary, KOReader sync, Stats v2.5, Quick Settings overlay) all earn their RAM cost — anything new should clear the same bar.
+## Reverting to stock firmware
+<https://xteink.dve.al/>
+
+---
+
+Philosophy: **A dedicated e-reader, not a Swiss Army knife.** Features that add RAM pressure without significantly improving reading are Out of Scope. AALU's additions (Dictionary, KOReader sync, Stats v2.5, Quick Settings) earn their RAM cost — new features clear the same bar.
