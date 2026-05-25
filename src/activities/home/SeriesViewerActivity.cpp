@@ -578,7 +578,7 @@ void SeriesViewerActivity::render(RenderLock&&) {
     // Down-arrow on the button-hint baseline. Sits to the right of the last
     // button (which ends ~24 px from the right edge in portrait), so the
     // button chrome -- drawn later -- can't repaint over it.
-    const int buttonMidY = renderer.getScreenHeight() - metrics.buttonHintsHeight / 2;
+    const int buttonMidY = renderer.getScreenHeight() - HomeRenderer::kButtonHintsHeight / 2;
     const int baseY = buttonMidY - kArrowH / 2;
     const int tipY = baseY + kArrowH;
     const int x[3] = {arrowCx - kArrowHalfW, arrowCx + kArrowHalfW, arrowCx};
@@ -586,7 +586,9 @@ void SeriesViewerActivity::render(RenderLock&&) {
     renderer.fillPolygon(x, y, 3, /*state=*/true);
   }
 
-  GUI.drawButtonHints(renderer, tr(STR_BACK), tr(STR_OPEN), nullptr, nullptr);
+  const Rect hintRect{0, renderer.getScreenHeight() - HomeRenderer::kButtonHintsHeight, screenW,
+                      HomeRenderer::kButtonHintsHeight};
+  HomeRenderer::drawBottomButtonHints(renderer, hintRect);
 
   // Snapshot the framebuffer BEFORE the focus border is drawn. Subsequent
   // focus-only moves restore this buffer and stamp a fresh border on top,
