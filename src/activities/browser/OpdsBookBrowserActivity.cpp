@@ -9,6 +9,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/home/BookshelfCache.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -339,6 +340,11 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
     Epub epub(filename, "/.crosspoint");
     epub.clearCache();
     LOG_DBG("OPDS", "Cleared cache for: %s", filename.c_str());
+
+    // The new EPUB has to surface in the bookshelf next time the user
+    // opens it. We don't carry a dirty-bit through the OPDS browser; just
+    // drop the cache file unconditionally on successful download.
+    BookshelfCache::invalidate();
 
     state = BrowserState::BROWSING;
     requestUpdate();

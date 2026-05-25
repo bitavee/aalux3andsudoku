@@ -205,6 +205,10 @@ class CrossPointSettings {
   uint8_t showHiddenFiles = 0;
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
+  // Bookshelf first-time tooltip: set to 1 after the user dismisses the
+  // one-time "Hold Back to refresh" hint. Persists across cache wipes — once
+  // the user has learned the gesture, the hint never re-appears.
+  uint8_t bookshelfRefreshHintSeen = 0;
 
   ~CrossPointSettings() = default;
 

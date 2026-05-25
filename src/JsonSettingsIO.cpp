@@ -124,6 +124,10 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
   doc["frontButtonLeft"] = s.frontButtonLeft;
   doc["frontButtonRight"] = s.frontButtonRight;
 
+  // Hidden flag (no user-visible UI). One-time tooltip dismissal for the
+  // bookshelf refresh gesture; persists across cache wipes.
+  doc["bookshelfRefreshHintSeen"] = s.bookshelfRefreshHintSeen;
+
   String json;
   serializeJson(doc, json);
   return Storage.writeFile(path, json);
@@ -215,6 +219,9 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
   s.frontButtonRight =
       clamp(doc["frontButtonRight"] | (uint8_t)S::FRONT_HW_RIGHT, S::FRONT_BUTTON_HARDWARE_COUNT, S::FRONT_HW_RIGHT);
   CrossPointSettings::validateFrontButtonMapping(s);
+
+  // Hidden flag: missing on legacy installs means "not yet seen" → default 0.
+  s.bookshelfRefreshHintSeen = clamp(doc["bookshelfRefreshHintSeen"] | (uint8_t)0, (uint8_t)2, (uint8_t)0);
 
   LOG_DBG("CPS", "Settings loaded from file");
 

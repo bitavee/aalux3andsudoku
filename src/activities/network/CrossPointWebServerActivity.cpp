@@ -12,6 +12,7 @@
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
 #include "WifiSelectionActivity.h"
+#include "activities/home/BookshelfCache.h"
 #include "activities/network/CalibreConnectActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -95,6 +96,13 @@ void CrossPointWebServerActivity::onExit() {
   LOG_DBG("WEBACT", "Setting WiFi mode OFF...");
   WiFi.mode(WIFI_OFF);
   delay(30);  // Allow WiFi hardware to power down
+
+  // Unconditional bookshelf cache invalidation: the user may have uploaded
+  // one or more books during this session, so the next bookshelf open must
+  // re-scan. We don't track which transfers succeeded -- the cost of a
+  // spurious scan is much lower than the cost of stale tiles after a
+  // genuine transfer.
+  BookshelfCache::invalidate();
 
   LOG_DBG("WEBACT", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
 }

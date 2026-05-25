@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 class GfxRenderer;
@@ -76,6 +77,14 @@ void drawSectionLabel(GfxRenderer& renderer, const Rect& rect);
 // or a series stack (stackDepth >= 1). The vector should contain only the
 // thumbnail tiles (typically tiles 1..4 with tile 0 reserved for the hero).
 void drawThumbnailRow(GfxRenderer& renderer, const Rect& rect, const std::vector<ThumbTileView>& tiles);
+
+// Bookshelf grid tile: ghost back-stack (if stackSize > 1) + cover at
+// `thumbPath` + corner count badge (if stackSize > 1). Used by the Bookshelf
+// activity so its series stacks render identically to Home's thumbnail row.
+// `thumbPath` is the cached thumbnail BMP path (already at the matching
+// height); when missing or unreadable, an empty rect placeholder is drawn.
+void drawStackedCover(GfxRenderer& renderer, int x, int y, int width, int height, const std::string& thumbPath,
+                      int stackSize);
 
 // Bottom menu: 3 fixed tiles (Browse, Stats, Settings), all unselected.
 // Tiles are borderless; the band is framed by a horizontal rule at its top

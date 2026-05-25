@@ -575,7 +575,7 @@ void HomeActivity::openFocused() {
     case FOCUS_MENU:
       switch (focusIndex) {
         case kMenuItemBrowse:
-          activityManager.goToFileBrowser();
+          activityManager.goToBookshelf();
           break;
         case kMenuItemStats:
           activityManager.pushActivity(std::make_unique<StatsActivity>(renderer, mappedInput));

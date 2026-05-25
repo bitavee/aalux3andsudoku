@@ -1,13 +1,12 @@
 #pragma once
 
+#include <FsHelpers.h>
 #include <Print.h>
 
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include <FsHelpers.h>
 
 #include "Epub/BookMetadataCache.h"
 #include "Epub/css/CssParser.h"

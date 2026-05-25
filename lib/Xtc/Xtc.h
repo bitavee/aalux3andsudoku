@@ -7,11 +7,11 @@
 
 #pragma once
 
+#include <FsHelpers.h>
+
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <FsHelpers.h>
 
 #include "Xtc/XtcParser.h"
 #include "Xtc/XtcTypes.h"

@@ -32,8 +32,7 @@ inline TickType_t xTaskGetTickCount() {
   using clock = std::chrono::steady_clock;
   static const clock::time_point start = clock::now();
   const auto elapsed = clock::now() - start;
-  return static_cast<TickType_t>(
-      std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count());
+  return static_cast<TickType_t>(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count());
 }
 #endif  // __cplusplus
 

@@ -75,10 +75,11 @@ std::unique_ptr<Txt> ReaderActivity::loadTxt(const std::string& path) {
   return nullptr;
 }
 
-void ReaderActivity::goToLibrary(const std::string& fromBookPath) {
-  // If coming from a book, start in that book's folder; otherwise start from root
-  auto initialPath = fromBookPath.empty() ? "/" : extractFolderPath(fromBookPath);
-  activityManager.goToFileBrowser(std::move(initialPath));
+void ReaderActivity::goToLibrary(const std::string& /*fromBookPath*/) {
+  // The legacy file browser took a starting folder so reader -> library
+  // re-entered next to the current book. Bookshelf is flat (no folders);
+  // we always land on the top-left tile.
+  activityManager.goToBookshelf();
 }
 
 void ReaderActivity::onGoToEpubReader(std::unique_ptr<Epub> epub) {

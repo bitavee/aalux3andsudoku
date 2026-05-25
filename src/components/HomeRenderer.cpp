@@ -513,7 +513,8 @@ void drawThumbnailRow(GfxRenderer& renderer, const Rect& rect, const std::vector
 }
 
 void drawBottomMenu(GfxRenderer& renderer, const Rect& rect) {
-  const char* labels[kMenuTilesCount] = {tr(STR_FILES), tr(STR_STATS_TITLE), tr(STR_TRANSFER), tr(STR_SETTINGS_TITLE)};
+  const char* labels[kMenuTilesCount] = {tr(STR_BOOKSHELF), tr(STR_STATS_TITLE), tr(STR_TRANSFER),
+                                         tr(STR_SETTINGS_TITLE)};
 
   // Horizontal rules framing the menu band, inset to the same horizontal
   // bounds as the menu tiles and the thumbnail row. Matches the crosspet
@@ -558,7 +559,8 @@ void drawBottomMenu(GfxRenderer& renderer, const Rect& rect) {
 
 void drawMenuSelection(GfxRenderer& renderer, const Rect& menuRect, int selectedIndex) {
   if (selectedIndex < 0 || selectedIndex >= kMenuTilesCount) return;
-  const char* labels[kMenuTilesCount] = {tr(STR_FILES), tr(STR_STATS_TITLE), tr(STR_TRANSFER), tr(STR_SETTINGS_TITLE)};
+  const char* labels[kMenuTilesCount] = {tr(STR_BOOKSHELF), tr(STR_STATS_TITLE), tr(STR_TRANSFER),
+                                         tr(STR_SETTINGS_TITLE)};
   const Rect tile = getMenuTileRect(menuRect, selectedIndex);
 
   // Solid black fill -- covers the previously-drawn icon+label so we don't
@@ -573,6 +575,47 @@ void drawMenuSelection(GfxRenderer& renderer, const Rect& menuRect, int selected
   const int textX = tile.x + (tile.width - textWidth) / 2;
   const int textY = tile.y + (tile.height - textHeight) / 2;
   renderer.drawText(UI_10_FONT_ID, textX, textY, labels[selectedIndex], /*black=*/false);
+}
+
+void drawStackedCover(GfxRenderer& renderer, int x, int y, int width, int height, const std::string& thumbPath,
+                      int stackSize) {
+  const int ghostDepth = stackSize > 1 ? std::min(2, stackSize - 1) : 0;
+  if (ghostDepth > 0) {
+    drawBackStack(renderer, x, y, width, height, ghostDepth);
+  }
+
+  // Bookshelf cover paint. Mirrors drawCover's logic but takes the thumb
+  // path directly (the bookshelf doesn't carry coverBmpPath on its slim
+  // entries -- the path is derived from the EPUB/XTC hash at tile build
+  // time). When the thumb file is missing or unreadable, draw an empty rect
+  // placeholder -- the title underneath identifies the book either way.
+  bool covered = false;
+  if (!thumbPath.empty()) {
+    FsFile file;
+    if (Storage.openFileForRead("BSH", thumbPath, file)) {
+      Bitmap bitmap(file);
+      if (bitmap.parseHeaders() == BmpReaderError::Ok) {
+        if (bitmap.is1Bit()) {
+          renderer.drawBitmapStretched1Bit(bitmap, x, y, width, height);
+        } else {
+          renderer.drawBitmap(bitmap, x, y, width, height);
+        }
+        covered = true;
+      }
+      file.close();
+    }
+  }
+  if (!covered) {
+    renderer.drawRect(x, y, width, height);
+  } else {
+    renderer.drawRect(x, y, width, height);
+  }
+
+  if (stackSize > 1) {
+    char countBuf[8];
+    std::snprintf(countBuf, sizeof(countBuf), "%d", stackSize);
+    drawRoundCountBadge(renderer, x, y, width, countBuf);
+  }
 }
 
 void drawBottomButtonHints(GfxRenderer& renderer, const Rect& rect) {
