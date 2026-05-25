@@ -93,7 +93,7 @@ bool seriesCountsLoaded = false;
 // the loser, who simply rebuilds on next scan. Cheap, no path-sanitisation
 // edge cases.
 std::string keyToBooksFile(const std::string& key) {
-  const uint64_t h = std::hash<std::string>{}(key);
+  const uint64_t h = FsHelpers::cachePathHash(key);
   char buf[40];
   std::snprintf(buf, sizeof(buf), "%s/%016llx.json", kBooksDir, static_cast<unsigned long long>(h));
   return buf;

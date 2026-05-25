@@ -15,4 +15,5 @@ build
 .history/
 /.venv
 *.local*
-emulator/sdcard/
+fs_
+/sdcard/

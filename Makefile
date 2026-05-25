@@ -1,43 +1,50 @@
-.PHONY: emulator emulator-detached emulator-stop emulator-logs emulator-clean emulator-rebuild help
+.PHONY: emulator sim sim-build sim-clean fs_link help
 
-EMULATOR_DIR := emulator
-SDCARD_DIR   := $(EMULATOR_DIR)/sdcard
-COMPOSE      := docker compose
+SDCARD  := sdcard
+SIM_BIN := .pio/build/simulator/program
 
 help:
 	@echo "AALU Makefile targets:"
-	@echo "  make emulator           Build + run the browser emulator (foreground, Ctrl-C to stop)"
-	@echo "  make emulator-detached  Same, but run in the background"
-	@echo "  make emulator-logs      Tail emulator logs (use after -detached)"
-	@echo "  make emulator-stop      Stop the emulator container"
-	@echo "  make emulator-rebuild   Force a clean rebuild of the emulator image"
-	@echo "  make emulator-clean     Stop + remove containers, volumes, build cache"
+	@echo "  make emulator    Build, mount ./$(SDCARD)/ as the SD card, launch the simulator"
+	@echo "  make sim         Same as make emulator"
+	@echo "  make sim-build   Build only — produces $(SIM_BIN)"
+	@echo "  make sim-clean   Wipe simulator build cache and on-disk SD-card cache"
 	@echo ""
-	@echo "Open http://localhost:8080 once it's up. Drop EPUBs into $(SDCARD_DIR)/."
+	@echo "Prereq:  brew install sdl2"
+	@echo "Books:   drop EPUBs into ./$(SDCARD)/ (gitignored)"
 
-emulator: $(SDCARD_DIR)
-	@cd $(EMULATOR_DIR) && $(COMPOSE) up --build
+# Headline one-shot: compile, ensure sdcard/ exists, mount it via the fs_
+# symlink, then launch.
+emulator: sim
+sim: sim-build | $(SDCARD) fs_link
+	@echo "Launching emulator (SD card: ./$(SDCARD)/) ..."
+	@./$(SIM_BIN)
 
-emulator-detached: $(SDCARD_DIR)
-	@cd $(EMULATOR_DIR) && $(COMPOSE) up -d --build
-	@echo ""
-	@echo "Emulator running at http://localhost:8080"
-	@echo "Logs:   make emulator-logs"
-	@echo "Stop:   make emulator-stop"
+sim-build:
+	pio run -e simulator
 
-emulator-stop:
-	@cd $(EMULATOR_DIR) && $(COMPOSE) down
+$(SDCARD):
+	@mkdir -p $@
+	@echo "Created ./$@/ — drop EPUBs here (gitignored)."
 
-emulator-logs:
-	@cd $(EMULATOR_DIR) && $(COMPOSE) logs -f
+# The crosspoint-simulator hardcodes its sandbox path to ./fs_/ (see its
+# HalStorage.cpp). We expose the more intuitive ./sdcard/ to the user and
+# keep fs_ as a symlink. On first run, if a real fs_/ directory exists from
+# an older sim run, migrate its contents into sdcard/ before replacing.
+fs_link: $(SDCARD)
+	@if [ -L fs_ ]; then \
+	  :; \
+	elif [ -d fs_ ]; then \
+	  echo "Migrating ./fs_/ → ./$(SDCARD)/ (one-time) ..."; \
+	  cp -R fs_/. $(SDCARD)/; \
+	  rm -rf fs_; \
+	  ln -s $(SDCARD) fs_; \
+	elif [ -e fs_ ]; then \
+	  echo "ERROR: ./fs_ exists and is not a directory or symlink — refusing to clobber."; \
+	  exit 1; \
+	else \
+	  ln -s $(SDCARD) fs_; \
+	fi
 
-emulator-rebuild: $(SDCARD_DIR)
-	@cd $(EMULATOR_DIR) && $(COMPOSE) build --no-cache
-	@cd $(EMULATOR_DIR) && $(COMPOSE) up
-
-emulator-clean:
-	@cd $(EMULATOR_DIR) && $(COMPOSE) down -v --remove-orphans
-
-$(SDCARD_DIR):
-	@mkdir -p $(SDCARD_DIR)
-	@echo "Created $(SDCARD_DIR)/ — drop EPUBs here. (gitignored)"
+sim-clean:
+	rm -rf .pio/build/simulator .pio/libdeps/simulator $(SDCARD)/.crosspoint

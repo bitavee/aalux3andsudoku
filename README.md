@@ -200,42 +200,63 @@ If any of those would matter to you, open an issue or PR.
 
 ## Developing
 
-### Browser-based emulator
+### Desktop simulator
 
-A Docker-packaged emulator lives in [`emulator/`](./emulator). **Honest status: scaffolding.** v0 is a Python stub that proves the WebSocket protocol and SD-card mount work end to end — `src/` does not yet run natively on the host. It's useful right now for iterating on the web frontend and protocol; **not** a substitute for hardware testing.
+AALU compiles as a native desktop app via the [`uxjulia/crosspoint-simulator`](https://github.com/uxjulia/crosspoint-simulator) PlatformIO library — same `src/` + `lib/` code as the device, rendered into an SDL2 window. Useful for UI iteration, EPUB parsing, dictionary, stats, and any logic that isn't tied to actual e-ink/FreeRTOS behaviour.
 
 #### Running it
 
 ```bash
-make emulator           # foreground (Ctrl-C to stop)
-make emulator-detached  # background
-make emulator-logs      # tail container logs
-make emulator-stop      # stop container
-make emulator-rebuild   # force clean rebuild
-make emulator-clean     # nuke containers, volumes, build cache
+brew install sdl2     # one-time prereq (macOS)
+
+make emulator         # build, mount ./sdcard/, launch
+make sim-build        # build only → .pio/build/simulator/program
+make sim-clean        # wipe build cache + ./sdcard/.crosspoint/
 ```
 
-Open <http://localhost:8080>. Requires Docker Desktop (or Docker Engine + Compose v2).
+Native Windows is not supported by the underlying simulator library; use WSL with `libsdl2-dev` instead.
 
 #### Putting books on it
 
-Drop `.epub` files into `emulator/sdcard/`. That folder:
-- Is bind-mounted into the container at `/sdcard`.
-- Is auto-created by `make emulator` on first run.
-- Is gitignored at both `emulator/.gitignore` and the root `.gitignore` — SD card contents cannot be committed by accident.
+`make emulator` creates `./sdcard/` (gitignored) at the repo root on first run and exposes it as the sim's SD-card filesystem. Device SD root → `./sdcard/`.
 
-You can copy a real SD card's contents in (including the `.crosspoint/` cache), but keep the emulator locked to 800×480 with the same render settings for cache interchange to work.
+```bash
+# Drop loose EPUBs
+cp ~/Downloads/MyBook.epub sdcard/
 
-#### What the emulator does NOT replace
+# Or snapshot a real SD card
+cp -R /path/to/sdcard/. sdcard/
 
-- **No e-ink ghosting or refresh latency** — canvas repaints instantly.
+# Or replace ./sdcard/ outright with a symlink to a mounted SD card
+rm -rf sdcard fs_
+ln -s /Volumes/your-sd-card sdcard
+```
+
+The sim internally hardcodes its sandbox path to `./fs_/`. The Makefile keeps `fs_` as a symlink to `sdcard/` so the user-facing folder has an intuitive name. You can ignore `fs_` — touch `sdcard/` only.
+
+`.crosspoint/` cache from a real device works *only* when the sim runs at the same panel resolution (800×480) and identical render settings — otherwise `rm -rf sdcard/.crosspoint/` before launching.
+
+#### Input
+
+| Key | Physical button |
+|---|---|
+| ↑ / ↓ | Side buttons (`BTN_UP` / `BTN_DOWN`) |
+| ← / → | Front `BTN_LEFT` / `BTN_RIGHT` |
+| Return | `BTN_CONFIRM` |
+| Escape | `BTN_BACK` |
+| P | `BTN_POWER` |
+| S | Simulator sleep request |
+
+AALU's `MappedInputManager` does the same physical → logical translation as on the device — front-button remapping in Settings → Button Remap applies in the sim too.
+
+#### What the sim does NOT replace
+
+- **No e-ink ghosting or refresh latency** — SDL repaints instantly.
 - **No 380KB RAM ceiling** — host has GB; leaks pass silently.
-- **No FreeRTOS scheduling** — host threads have different semantics.
-- **No Wi-Fi / OTA / OPDS / battery**.
+- **No FreeRTOS scheduling** — `std::thread` + condvars, different semantics.
+- **No Wi-Fi / OTA / Bluetooth / battery / deep sleep** — stubbed or no-op.
 
-This means the emulator is useful for **UI, EPUB, dictionary, and stats logic iteration** — but the four-orientation hardware checklist is still required before declaring any visual or input change done.
-
-See [`emulator/README.md`](./emulator/README.md) for the WebSocket protocol and the next concrete step (HAL shims + CMake host build of `src/` + `lib/`).
+The four-orientation hardware checklist is still required before declaring any visual or input change done.
 
 ---
 

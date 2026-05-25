@@ -418,22 +418,75 @@ NEVER commit. NEVER put serial ports or secrets in `platformio.ini`. Use `${base
 
 ---
 
-## Browser Emulator (`emulator/`)
+## Desktop Simulator (`[env:simulator]`)
 
-**Honest status: scaffolding.** v0 Python stub proves the WebSocket protocol and SD bind-mount end-to-end. `src/` does NOT run natively yet. Useful for web frontend / protocol iteration; **not** a hardware substitute.
+SDL2-backed native build of the real `src/` + `lib/` tree, powered by the [`uxjulia/crosspoint-simulator`](https://github.com/uxjulia/crosspoint-simulator) PlatformIO library. Same AALU code that runs on the device, compiled for the host, rendered into an SDL window.
 
 ```bash
-make emulator           # foreground
-make emulator-detached  # background
-make emulator-logs / stop / rebuild / clean
+brew install sdl2                       # prereq, one time
+
+make emulator                           # build, mount ./sdcard/, launch
+make sim-build                          # build only → .pio/build/simulator/program
+make sim-clean                          # wipe sim build cache + ./sdcard/.crosspoint/
+pio run -e simulator -t run_simulator   # equivalent direct command
 ```
-Open <http://localhost:8080>. Requires Docker.
 
-Books: drop `.epub` into `emulator/sdcard/` (bind-mounted to `/sdcard`, auto-created, gitignored at both levels).
+### Filesystem layout
+User-facing SD-card root is `./sdcard/` at the repo root (gitignored, auto-created by `make emulator`). Internally the sim hardcodes its sandbox to `./fs_/` (see sim's `HalStorage.cpp`), so the Makefile keeps `fs_` as a symlink to `sdcard/`. Device SD root → `./sdcard/`. Device `/books/file.epub` → `./sdcard/books/file.epub`. Cache at `./sdcard/.crosspoint/`.
 
-NOT replaced by emulator: e-ink ghosting/refresh, 380 KB RAM ceiling, FreeRTOS scheduling, Wi-Fi/OTA/OPDS/battery, cache binary fidelity (lock to 800×480 + same render settings for cache interchange). 4-orientation hardware checklist still required.
+**Point the sim at a real SD card's contents** — three options:
 
-See `emulator/README.md` for protocol details.
+```bash
+# A. Drop loose EPUBs (simplest)
+cp ~/Downloads/MyBook.epub sdcard/
+
+# B. Snapshot copy of a real device's SD card
+cp -R /path/to/sdcard/. sdcard/
+
+# C. Replace the whole sdcard/ with a symlink to a mounted SD card
+rm -rf sdcard fs_
+ln -s /Volumes/your-sd-card sdcard
+```
+
+After any change to storage/cache binary layout, `rm -rf sdcard/.crosspoint/` (or `make sim-clean`) before re-running — stale caches mask the fix. Cache from a real device works *only* if the sim runs at the same panel resolution (800×480 by default) and identical render settings (font / size / margin / orientation).
+
+### Input mapping (authoritative: sim's `HalGPIO.cpp`)
+
+| SDL key | Physical button (`HalGPIO::`) | Default logical mapping in AALU |
+|---|---|---|
+| Escape | `BTN_BACK` | `Button::Back` (front, remappable) |
+| Return | `BTN_CONFIRM` | `Button::Confirm` (front, remappable) |
+| ← | `BTN_LEFT` | `Button::Left` (front, remappable) |
+| → | `BTN_RIGHT` | `Button::Right` (front, remappable) |
+| ↑ | `BTN_UP` | `Button::Up` / `Button::PageBack` in reader |
+| ↓ | `BTN_DOWN` | `Button::Down` / `Button::PageForward` in reader |
+| P | `BTN_POWER` | Power |
+| S | (simulator sleep request) | `HalGPIO::consumeSimulatorSleepRequest()` |
+
+Front-button mapping is user-controlled via Settings → Button Remap (`SETTINGS.frontButton*`). Reader-context page direction is `SETTINGS.sideButtonLayout`. The sim feeds the *physical* button index; AALU's `MappedInputManager` (`src/MappedInputManager.cpp:20-55`) does the physical → logical translation exactly as on the device.
+
+No hotkey rotates the display. Orientation is changed through the app's own Settings → Orientation, which calls `GfxRenderer::setOrientation` — the sim's `HalDisplay::setSimulatorOrientation` (auto-patched into AALU's `GfxRenderer.h` by the sim lib) rotates the SDL window to match.
+
+### Sim-specific source files (do not delete)
+- `src/simulator/sim_compat.h` — `-include`-injected shim for `TickType_t`, `xTaskGetTickCount`, and the FreeRTOS tick macro. Sim's `<freertos/FreeRTOS.h>` doesn't provide all three.
+- `src/simulator/sim_stubs/network/{FirmwareFlasher,OtaBootSwitch}.h` — declarations the sim's `simulator_firmware.cpp` / `simulator_ota.cpp` shims expect to find. AALU has no firmware-flashing UI; these stubs exist only so the sim links. Device builds never see them (`-Isrc/simulator/sim_stubs` only on `[env:simulator]`).
+- `src/network/OtaUpdater.h` — declares a `#ifdef SIMULATOR`-only `installUpdate(ProgressCallback, void*, std::atomic<bool>*)` overload + `CANCELLED_ERROR` enum value, both implemented by the sim's `simulator_ota.cpp`. Device build doesn't see either.
+
+### Fork-drift cost — read this
+The sim was written against upstream CrossPoint. Each time AALU adds a new method to a `Hal*` class (or to a class the sim already stubs, like `OtaUpdater`) and that code path is exercised, the sim build can fail until a matching stub is added. Usually one-line no-ops. This is the single most common reason `pio run -e simulator` breaks after pulling firmware updates.
+
+### What the sim does NOT reproduce
+
+| Device | Sim |
+|---|---|
+| E-ink ghosting / 1–2 s full refresh | Instant SDL redraw |
+| 380 KB RAM hard ceiling | Host has GB; leaks pass silently |
+| 160 MHz RISC-V | GHz x86/ARM — timings are wrong |
+| FreeRTOS scheduling | std::thread + condvars (different semantics) |
+| Wi-Fi / OTA / Bluetooth / battery / deep sleep | Stubbed or no-op |
+| Flash cache suspend behaviour (`IRAM_ATTR`) | N/A |
+
+Useful for: UI iteration, EPUB parsing, dictionary, KOReader sync, stats math, all four orientations. **Not a substitute** for the hardware checklist in [Testing Workflow](#testing-workflow-mandatory-after-every-code-change) — visual or input changes still need 4-orientation device testing before declaring done.
 
 ---
 

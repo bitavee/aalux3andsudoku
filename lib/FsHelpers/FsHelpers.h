@@ -1,12 +1,40 @@
 #pragma once
 #include <WString.h>
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 
 namespace FsHelpers {
 
 std::string normalisePath(const std::string& path);
+
+// Stable, process-independent hash for on-disk cache directory names
+// (e.g. `epub_<hash>`, `xtc_<hash>`, `recent_series_count_<hash>`).
+//
+// On the device (libstdc++) `std::hash<std::string>` is deterministic
+// across runs, and existing user caches were named with its output — so
+// we keep using it there.
+//
+// On the host simulator (libc++ on macOS) `std::hash<std::string>` is
+// per-process randomised as a hash-flooding mitigation. That meant every
+// `make emulator` invocation generated a new cache key for the same book
+// path, orphaning the previous run's directory and triggering full
+// re-parses (or worse, "covers disappear" when a stored coverBmpPath had
+// last run's hash baked in). FNV-1a is fixed-seed and gives us stable
+// keys across sim restarts.
+inline uint64_t cachePathHash(const std::string& s) {
+#ifdef SIMULATOR
+  uint64_t h = 14695981039346656037ULL;  // FNV-1a 64-bit offset basis
+  for (const unsigned char c : s) {
+    h ^= c;
+    h *= 1099511628211ULL;  // FNV-1a 64-bit prime
+  }
+  return h;
+#else
+  return static_cast<uint64_t>(std::hash<std::string>{}(s));
+#endif
+}
 
 /**
  * Check if the given filename ends with the specified extension (case-insensitive).

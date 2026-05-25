@@ -19,7 +19,7 @@ constexpr const char* kProgressCacheFile = "/.crosspoint/home_progress.json";
 // Mirrors the cache path scheme used by Epub::Epub() so that the home screen
 // can locate progress.bin without instantiating an Epub object.
 std::string cachePathFor(const std::string& bookPath) {
-  return std::string(kCacheRoot) + "/epub_" + std::to_string(std::hash<std::string>{}(bookPath));
+  return std::string(kCacheRoot) + "/epub_" + std::to_string(FsHelpers::cachePathHash(bookPath));
 }
 
 // Snapshot of progress.bin contents. Format (matches EpubReaderActivity::saveProgress):

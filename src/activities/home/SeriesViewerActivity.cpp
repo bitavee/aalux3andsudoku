@@ -282,22 +282,42 @@ void SeriesViewerActivity::runScan() {
   // Deleting the existing thumb first ensures stale files get redone too.
   const int total = static_cast<int>(books.size());
   for (int i = 0; i < total; ++i) {
-    const RecentBook& book = books[i];
+    RecentBook& book = books[i];
     if (book.coverBmpPath.empty()) continue;
     GUI.fillPopupProgress(renderer, popupRect, (i + 1) * 100 / std::max(total, 1));
-    const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, HomeRenderer::kThumbnailCoverHeight);
-    Storage.remove(thumbPath.c_str());
+
     if (FsHelpers::hasEpubExtension(book.path)) {
       Epub epub(book.path, "/.crosspoint");
-      epub.load(false, true);
-      epub.generateThumbBmp(HomeRenderer::kThumbnailCoverHeight);
+      // buildIfMissing=true: rebuild the per-book cache from the EPUB if
+      // the directory is gone. This survives wiped `.crosspoint`, a moved
+      // SD card, or a hash-scheme change in the sim. The previous
+      // load(false, ...) would silently fail in those cases, leaving us
+      // having deleted the old thumb without a replacement.
+      if (epub.load(true, true)) {
+        const std::string freshCoverBmpPath = epub.getThumbBmpPath();
+        Storage.remove(UITheme::getCoverThumbPath(book.coverBmpPath, HomeRenderer::kThumbnailCoverHeight).c_str());
+        if (freshCoverBmpPath != book.coverBmpPath) {
+          Storage.remove(UITheme::getCoverThumbPath(freshCoverBmpPath, HomeRenderer::kThumbnailCoverHeight).c_str());
+        }
+        epub.generateThumbBmp(HomeRenderer::kThumbnailCoverHeight);
+        book.coverBmpPath = freshCoverBmpPath;
+      }
     } else if (FsHelpers::hasXtcExtension(book.path)) {
       Xtc xtc(book.path, "/.crosspoint");
       if (xtc.load()) {
+        const std::string freshCoverBmpPath = xtc.getThumbBmpPath();
+        Storage.remove(UITheme::getCoverThumbPath(book.coverBmpPath, HomeRenderer::kThumbnailCoverHeight).c_str());
+        if (freshCoverBmpPath != book.coverBmpPath) {
+          Storage.remove(UITheme::getCoverThumbPath(freshCoverBmpPath, HomeRenderer::kThumbnailCoverHeight).c_str());
+        }
         xtc.generateThumbBmp(HomeRenderer::kThumbnailCoverHeight);
+        book.coverBmpPath = freshCoverBmpPath;
       }
     }
   }
+  // Persist the updated coverBmpPaths so subsequent opens render from the
+  // newly written thumb file.
+  SeriesGrouping::saveCachedBooks(key, books);
 
   focusIndex = 0;
   scrollRow = 0;
