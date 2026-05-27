@@ -41,17 +41,22 @@ class OtaUpdater {
 
   bool getRender() const { return render; }
 
+  using ProgressCallback = void (*)(void* ctx);
+
   OtaUpdater() = default;
   bool isUpdateNewer() const;
   const std::string& getLatestVersion() const;
   OtaUpdaterError checkForUpdate();
-  OtaUpdaterError installUpdate();
+  // onProgress (if non-null) is invoked from the download loop after each
+  // chunk is committed, so the UI task can be notified to redraw the bar.
+  // Without it, the main task is blocked here for the full download and the
+  // progress bar stays frozen until completion.
+  OtaUpdaterError installUpdate(ProgressCallback onProgress = nullptr, void* ctx = nullptr);
 
 #ifdef SIMULATOR
   // Simulator-only overload. Implementation is provided by the
   // crosspoint-simulator library (simulator_ota.cpp) — it does nothing
   // destructive and is wired up so the OTA UI loop can still be exercised.
-  using ProgressCallback = void (*)(void* ctx);
   OtaUpdaterError installUpdate(ProgressCallback onProgress, void* ctx, std::atomic<bool>* cancelRequested);
 #endif
 };

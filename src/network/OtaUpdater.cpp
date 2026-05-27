@@ -147,7 +147,7 @@ bool OtaUpdater::isUpdateNewer() const {
 
 const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; }
 
-OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate() {
+OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgress, void* ctx) {
   if (!isUpdateNewer()) {
     return UPDATE_OLDER_ERROR;
   }
@@ -281,6 +281,13 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate() {
     processedSize = totalRead;
     render = true;
     lastDataMs = millis();
+
+    // Notify the UI task so it can redraw the progress bar. The activity's
+    // render() throttles to 2% intervals, so spamming this every chunk is
+    // fine — most calls early-return without touching the display.
+    if (onProgress) {
+      onProgress(ctx);
+    }
   }
 
   http.end();
@@ -312,10 +319,10 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate() {
 
 #else  // SIMULATOR
 
-// Simulator stub: the no-args installUpdate() is the device code path and
-// would otherwise be undefined at link time. The sim's UI never reaches it
-// because the sim's checkForUpdate() (in simulator_ota.cpp) returns NO_UPDATE,
-// but the symbol still needs to exist.
-OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate() { return INTERNAL_UPDATE_ERROR; }
+// Simulator stub: the default-args installUpdate() is the device code path
+// and would otherwise be undefined at link time. The sim's UI never reaches
+// it because the sim's checkForUpdate() (in simulator_ota.cpp) returns
+// NO_UPDATE, but the symbol still needs to exist.
+OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback, void*) { return INTERNAL_UPDATE_ERROR; }
 
 #endif  // SIMULATOR
