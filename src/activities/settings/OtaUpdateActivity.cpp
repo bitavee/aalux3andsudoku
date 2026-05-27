@@ -158,8 +158,8 @@ void OtaUpdateActivity::loop() {
       // activity loop can't poll for progress. The callback runs from inside
       // the download loop and wakes the render task on each chunk; render()
       // self-throttles to 2% so this doesn't thrash the display.
-      const auto res = updater.installUpdate(
-          [](void* ctx) { static_cast<OtaUpdateActivity*>(ctx)->requestUpdate(true); }, this);
+      const auto res =
+          updater.installUpdate([](void* ctx) { static_cast<OtaUpdateActivity*>(ctx)->requestUpdate(true); }, this);
 
       if (res != OtaUpdater::OK) {
         LOG_DBG("OTA", "Update failed: %d", res);
