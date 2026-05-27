@@ -333,12 +333,26 @@ logSerial.flush();   // before suspected crash
 ### CI/CD workflows
 | Workflow | File | Purpose |
 |---|---|---|
-| Build Check | `ci.yml` | Compile |
-| Format Check | `pr-formatting-check.yml` | clang-format |
+| Build Check | `ci.yml` | clang-format + cppcheck + build |
+| Format Check | `pr-formatting-check.yml` | PR title check |
 | Release | `release.yml` | Production |
 | RC | `release_candidate.yml` | RC |
 
-Fix CI failures before review.
+### Always confirm CI is green — non-negotiable
+
+CI runs three required jobs on every push to `master` and every PR (`ci.yml`): `clang-format`, `cppcheck`, `build`. A failing run on `master` blocks the next release (`Release` only fires after `CI (build)` succeeds). Treat a red `master` as stop-the-line.
+
+Rules:
+1. **Before declaring any task done**, run the full [Testing Workflow](#testing-workflow-mandatory-after-every-code-change) locally — all four steps green, no exceptions, no "the change was tiny."
+2. **After pushing**, check the CI run on the pushed branch and wait for it to finish:
+   ```bash
+   GH_HOST=github.com gh run list --repo <owner>/<repo> --branch "$(git branch --show-current)" --limit 3
+   GH_HOST=github.com gh run watch <run-id> --repo <owner>/<repo>
+   ```
+   (Use `GH_HOST=github.com` + explicit `--repo` because this repo's remotes can confuse `gh`.) The branch is not "done" until CI is green.
+3. **If CI is red**, treat it as the active task. Don't move on, don't start something else, don't ask the user to fix it — diagnose the failure (`gh run view <id>`), reproduce it locally, fix it, push, and re-watch.
+4. **If CI failed before you were involved** (e.g. red `master` when you arrive), surface it to the user immediately and offer to fix it before doing anything else. Don't pile new work on top of a red main.
+5. **Don't bypass.** Never `--no-verify`, never skip the format/check steps locally to "just get the commit out." If a check is wrong, fix the check; don't route around it.
 
 ---
 

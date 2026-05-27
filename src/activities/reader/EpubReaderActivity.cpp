@@ -1352,9 +1352,5 @@ void EpubReaderActivity::renderQuickSettingsOverlay() {
                       isFocused ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
   }
 
-  // --- DRAW BUTTON HINTS ---
-  const char* hintConfirm = tr(STR_CONFIRM);  // "Apply & Close" equivalent
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), hintConfirm, tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
-
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  GUI.drawButtonHintsGlyphs(renderer);
 }

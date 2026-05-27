@@ -147,16 +147,14 @@ void OpdsBookBrowserActivity::render(RenderLock&&) {
 
   if (state == BrowserState::CHECK_WIFI) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, statusMessage.c_str());
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    GUI.drawButtonHintsGlyphs(renderer);
     renderer.displayBuffer();
     return;
   }
 
   if (state == BrowserState::LOADING) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, statusMessage.c_str());
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    GUI.drawButtonHintsGlyphs(renderer);
     renderer.displayBuffer();
     return;
   }
@@ -164,8 +162,7 @@ void OpdsBookBrowserActivity::render(RenderLock&&) {
   if (state == BrowserState::ERROR) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 20, tr(STR_ERROR_MSG));
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 10, errorMessage.c_str());
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_RETRY), "", "");
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    GUI.drawButtonHintsGlyphs(renderer);
     renderer.displayBuffer();
     return;
   }
@@ -187,14 +184,7 @@ void OpdsBookBrowserActivity::render(RenderLock&&) {
     return;
   }
 
-  // Browsing state
-  // Show appropriate button hint based on selected entry type
-  const char* confirmLabel = tr(STR_OPEN);
-  if (!entries.empty() && entries[selectorIndex].type == OpdsEntryType::BOOK) {
-    confirmLabel = tr(STR_DOWNLOAD);
-  }
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  GUI.drawButtonHintsGlyphs(renderer);
 
   if (entries.empty()) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, tr(STR_NO_ENTRIES));

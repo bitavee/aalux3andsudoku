@@ -93,8 +93,7 @@ void KOReaderAuthActivity::render(RenderLock&&) {
     renderer.drawCenteredText(UI_10_FONT_ID, top + height + 10, errorMessage.c_str());
   }
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  GUI.drawButtonHintsGlyphs(renderer);
   renderer.displayBuffer();
 }
 

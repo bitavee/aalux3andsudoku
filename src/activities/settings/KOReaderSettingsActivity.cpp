@@ -146,9 +146,7 @@ void KOReaderSettingsActivity::render(RenderLock&&) {
       },
       true);
 
-  // Draw help text at bottom
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  GUI.drawButtonHintsGlyphs(renderer);
 
   renderer.displayBuffer();
 }
