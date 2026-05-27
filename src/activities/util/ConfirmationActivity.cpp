@@ -48,9 +48,7 @@ void ConfirmationActivity::render(RenderLock&& lock) {
     renderer.drawCenteredText(fontId, currentY, safeBody.c_str(), true, EpdFontFamily::REGULAR);
   }
 
-  // Draw UI Elements
-  const auto labels = mappedInput.mapLabels("", "", I18N.get(StrId::STR_CANCEL), I18N.get(StrId::STR_CONFIRM));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  GUI.drawButtonHintsGlyphs(renderer);
 
   renderer.displayBuffer(HalDisplay::RefreshMode::FAST_REFRESH);
 }

@@ -69,6 +69,13 @@ class ReadingStatsManager {
   const GlobalStats& getGlobal() const { return global; }
   uint8_t getBookCount() const { return global.bookCount; }
   const BookStatEntry& getBook(uint8_t index) const { return books[index]; }
+  // Removes the entry at `index` from the in-memory list, shifts trailing
+  // entries down, and persists the new state. Returns false if the index is
+  // out of range. Lifetime counters (totalReadingMs, totalSessionCount,
+  // totalBooksFinished) are intentionally left untouched -- removing a stats
+  // row hides the book from the list, it does not retroactively erase the
+  // time the user spent reading it.
+  bool removeBook(uint8_t index);
   uint32_t getLast7SessionsMs() const;
   uint8_t getLast7SessionCount() const { return global.sessionRingCount; }
 

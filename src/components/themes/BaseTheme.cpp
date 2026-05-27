@@ -171,6 +171,94 @@ void BaseTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const c
   renderer.setOrientation(orig_orientation);
 }
 
+namespace {
+void drawSolidDisc(const GfxRenderer& renderer, int cx, int cy, int radius) {
+  const int rsq = radius * radius;
+  for (int dy = -radius; dy <= radius; ++dy) {
+    for (int dx = -radius; dx <= radius; ++dx) {
+      if (dx * dx + dy * dy <= rsq) {
+        renderer.drawPixel(cx + dx, cy + dy, true);
+      }
+    }
+  }
+}
+}  // namespace
+
+void BaseTheme::drawButtonHintsGlyphs(GfxRenderer& renderer, ButtonHintGlyphSet variant) const {
+  const GfxRenderer::Orientation orig_orientation = renderer.getOrientation();
+  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+
+  const int pageWidth = renderer.getScreenWidth();
+  const int pageHeight = renderer.getScreenHeight();
+  constexpr int bandHeight = BaseMetrics::values.buttonHintsHeight;
+  const int bandTop = pageHeight - bandHeight;
+
+  constexpr int kSlotCount = 4;
+  constexpr int kGlyphHalf = 6;
+  const int slotWidth = pageWidth / kSlotCount;
+  const int glyphCy = bandTop + bandHeight / 2;
+
+  for (int i = 0; i < kSlotCount; ++i) {
+    const int cx = i * slotWidth + slotWidth / 2;
+
+    if (i == 0) {
+      const int xPts[3] = {cx - kGlyphHalf, cx + kGlyphHalf, cx + kGlyphHalf};
+      const int yPts[3] = {glyphCy, glyphCy - kGlyphHalf, glyphCy + kGlyphHalf};
+      renderer.fillPolygon(xPts, yPts, 3, true);
+      continue;
+    }
+    if (i == 1) {
+      drawSolidDisc(renderer, cx, glyphCy, kGlyphHalf);
+      continue;
+    }
+
+    if (variant == ButtonHintGlyphSet::StatsActions) {
+      if (i == 2) {
+        // Three horizontal dots ("more").
+        constexpr int kDotRadius = 1;
+        constexpr int kDotSpacing = 5;
+        for (int d = -1; d <= 1; ++d) {
+          drawSolidDisc(renderer, cx + d * kDotSpacing, glyphCy, kDotRadius);
+        }
+      } else {
+        // Two stacked horizontal arrows pointing opposite ways (swap/toggle).
+        constexpr int kArrowHalfW = 5;
+        constexpr int kArrowHalfH = 2;
+        const int topY = glyphCy - 3;
+        const int botY = glyphCy + 3;
+        // Top arrow: shaft + right-pointing head.
+        renderer.drawLine(cx - kArrowHalfW, topY, cx + kArrowHalfW - kArrowHalfH, topY);
+        {
+          const int xPts[3] = {cx + kArrowHalfW, cx + kArrowHalfW - kArrowHalfH, cx + kArrowHalfW - kArrowHalfH};
+          const int yPts[3] = {topY, topY - kArrowHalfH, topY + kArrowHalfH};
+          renderer.fillPolygon(xPts, yPts, 3, true);
+        }
+        // Bottom arrow: shaft + left-pointing head.
+        renderer.drawLine(cx - kArrowHalfW + kArrowHalfH, botY, cx + kArrowHalfW, botY);
+        {
+          const int xPts[3] = {cx - kArrowHalfW, cx - kArrowHalfW + kArrowHalfH, cx - kArrowHalfW + kArrowHalfH};
+          const int yPts[3] = {botY, botY - kArrowHalfH, botY + kArrowHalfH};
+          renderer.fillPolygon(xPts, yPts, 3, true);
+        }
+      }
+      continue;
+    }
+
+    // Default: navigation up/down triangles.
+    if (i == 2) {
+      const int xPts[3] = {cx - kGlyphHalf, cx + kGlyphHalf, cx};
+      const int yPts[3] = {glyphCy + kGlyphHalf, glyphCy + kGlyphHalf, glyphCy - kGlyphHalf};
+      renderer.fillPolygon(xPts, yPts, 3, true);
+    } else {
+      const int xPts[3] = {cx - kGlyphHalf, cx + kGlyphHalf, cx};
+      const int yPts[3] = {glyphCy - kGlyphHalf, glyphCy - kGlyphHalf, glyphCy + kGlyphHalf};
+      renderer.fillPolygon(xPts, yPts, 3, true);
+    }
+  }
+
+  renderer.setOrientation(orig_orientation);
+}
+
 void BaseTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const {
   const int screenWidth = renderer.getScreenWidth();
   constexpr int buttonWidth = BaseMetrics::values.sideButtonHintsWidth;  // Width on screen (height when rotated)

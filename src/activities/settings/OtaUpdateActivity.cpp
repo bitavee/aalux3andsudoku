@@ -27,13 +27,15 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
 
   const auto res = updater.checkForUpdate();
   if (res != OtaUpdater::OK) {
-    LOG_DBG("OTA", "Update check failed: %d", res);
+    LOG_ERR("OTA", "Update check failed (code=%d, current=%s)", res, AALU_VERSION);
     {
       RenderLock lock(*this);
       state = FAILED;
     }
     return;
   }
+
+  LOG_INF("OTA", "Update check OK: current=%s latest=%s", AALU_VERSION, updater.getLatestVersion().c_str());
 
   if (!updater.isUpdateNewer()) {
     LOG_DBG("OTA", "No new update available");

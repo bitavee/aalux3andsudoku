@@ -114,6 +114,18 @@ class BaseTheme {
                                 bool showPercentage = true) const;  // Right aligned (UI headers)
   virtual void drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                                const char* btn4) const;
+  // Borderless variant: four glyphs along the bottom band, matching the
+  // home-screen hint style. The exact glyphs depend on the variant.
+  enum class ButtonHintGlyphSet {
+    // Navigation: back-arrow, disc (confirm), up-arrow, down-arrow.
+    Navigation,
+    // Stats: back-arrow, disc (open), three-dot "more", swap arrows for the
+    // reading/finished toggle. Up/down are repurposed in StatsActivity so the
+    // arrow glyphs would be misleading there.
+    StatsActions,
+  };
+  virtual void drawButtonHintsGlyphs(GfxRenderer& renderer,
+                                     ButtonHintGlyphSet variant = ButtonHintGlyphSet::Navigation) const;
   virtual void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const;
   virtual void drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,
                         const std::function<std::string(int index)>& rowTitle,

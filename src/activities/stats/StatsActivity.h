@@ -26,6 +26,11 @@ class StatsActivity final : public Activity {
 
   static void formatDuration(char* buf, size_t bufLen, uint32_t ms);
   uint8_t getVisibleBookCount() const;
+  // Resolves the currently focused row to the underlying StatsManager index,
+  // or 0xFF when nothing is selected. Shared by Open/More and the long-press
+  // remove flow so the same predicate hides hidden entries from all three.
+  uint8_t resolveSelectedMemoryIndex() const;
+  void confirmRemoveFocusedBook();
 
   int selectedBookIndex = 0;
 };

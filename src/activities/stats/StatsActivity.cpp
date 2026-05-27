@@ -14,6 +14,8 @@
 #include "DetailedStatsActivity.h"  // detailedStatistics
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "activities/reader/ReaderUtils.h"  // GO_HOME_MS — shared long-press threshold
+#include "activities/util/ConfirmationActivity.h"
 #include "components/HomeRenderer.h"  // kThumbnailCoverHeight — shared with home/groups so all three pages read the same on-disk thumb
 #include "components/UITheme.h"
 #include "components/themes/BaseTheme.h"
@@ -178,35 +180,21 @@ void StatsActivity::loop() {
     }
   }
 
-  // Map the visible row index back to the underlying StatsManager index.
-  // The same predicate used by getVisibleBookCount and renderBookPanel must
-  // be applied here, otherwise Open/More target the wrong book once any
-  // entry is hidden.
-  uint8_t actualMemoryIndex = 0;
-  int currentMatch = 0;
-
-  for (uint8_t j = 0; j < StatsManager.getBookCount(); ++j) {
-    const BookStatEntry& book = StatsManager.getBook(j);
-    if (!isStatsVisible(book)) continue;
-    const bool isDone = (book.progressPercent >= 95);
-    if (isDone != showingFinished) continue;
-
-    if (currentMatch == selectedBookIndex) {
-      actualMemoryIndex = j;
-      break;
-    }
-    currentMatch++;
-  }
+  const uint8_t actualMemoryIndex = resolveSelectedMemoryIndex();
 
   // Open detailed stats (More...)
   if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-    // Pass the correctly mapped book index to the new Activity
     activityManager.pushActivity(std::make_unique<DetailedStatsActivity>(renderer, mappedInput, actualMemoryIndex));
     return;
   }
 
-  // Open the selected book directly in the reader
+  // Confirm: short press opens the book, long press prompts to remove it from
+  // the stats list. Mirrors the home-screen recents long-press gesture.
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS) {
+      confirmRemoveFocusedBook();
+      return;
+    }
     const BookStatEntry& book = StatsManager.getBook(actualMemoryIndex);
     if (book.bookPath[0] != '\0') {
       activityManager.goToReader(std::string(book.bookPath));
@@ -217,6 +205,59 @@ void StatsActivity::loop() {
   if (changed) {
     requestUpdate();
   }
+}
+
+uint8_t StatsActivity::resolveSelectedMemoryIndex() const {
+  int currentMatch = 0;
+  for (uint8_t j = 0; j < StatsManager.getBookCount(); ++j) {
+    const BookStatEntry& book = StatsManager.getBook(j);
+    if (!isStatsVisible(book)) continue;
+    const bool isDone = (book.progressPercent >= 95);
+    if (isDone != showingFinished) continue;
+    if (currentMatch == selectedBookIndex) return j;
+    currentMatch++;
+  }
+  return 0xFF;
+}
+
+void StatsActivity::confirmRemoveFocusedBook() {
+  const uint8_t memoryIndex = resolveSelectedMemoryIndex();
+  if (memoryIndex == 0xFF) return;
+
+  // Snapshot the cacheKey now -- the dialog runs as a sub-activity, so the
+  // underlying array could in theory be mutated before the handler fires
+  // (e.g. a background end-of-session save). Re-resolving via cacheKey on
+  // confirm keeps us pointed at the right row even if indices have shifted.
+  char cacheKey[sizeof(BookStatEntry::cacheKey)];
+  strncpy(cacheKey, StatsManager.getBook(memoryIndex).cacheKey, sizeof(cacheKey));
+  cacheKey[sizeof(cacheKey) - 1] = '\0';
+
+  const std::string title = StatsManager.getBook(memoryIndex).title;
+
+  auto handler = [this, cacheKey = std::string(cacheKey)](const ActivityResult& result) {
+    if (result.isCancelled) return;
+
+    uint8_t target = 0xFF;
+    for (uint8_t i = 0; i < StatsManager.getBookCount(); ++i) {
+      if (strncmp(StatsManager.getBook(i).cacheKey, cacheKey.c_str(), sizeof(BookStatEntry::cacheKey)) == 0) {
+        target = i;
+        break;
+      }
+    }
+    if (target == 0xFF) return;
+    if (!StatsManager.removeBook(target)) return;
+
+    const uint8_t remaining = getVisibleBookCount();
+    if (remaining == 0) {
+      selectedBookIndex = 0;
+    } else if (selectedBookIndex >= static_cast<int>(remaining)) {
+      selectedBookIndex = static_cast<int>(remaining) - 1;
+    }
+    requestUpdate();
+  };
+
+  startActivityForResult(
+      std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_REMOVE_FROM_STATS), title), handler);
 }
 
 // -----------------------------------------------------------------------
@@ -243,13 +284,7 @@ void StatsActivity::render(RenderLock&& lock) {
   renderTopPanel(contentTop, topH, screenW);
   renderBookPanel(contentTop + topH, bottomH, screenW);
 
-  // Update button hints based on mode
-  // Select the appropriate translation key based on the toggle state
-  StrId toggleId = showingFinished ? StrId::STR_STATS_VIEW_READING : StrId::STR_STATS_VIEW_FINISHED;
-  const char* toggleHint = I18n::getInstance().get(toggleId);
-
-  // Draw navigation button hints
-  GUI.drawButtonHints(renderer, tr(STR_BACK), tr(STR_OPEN), tr(STR_STATS_MORE), toggleHint);
+  GUI.drawButtonHintsGlyphs(renderer, BaseTheme::ButtonHintGlyphSet::StatsActions);
 
   renderer.displayBuffer();
 }

@@ -38,7 +38,7 @@ void DetailedStatsActivity::render(RenderLock&& lock) {
 
   // Bottom button bar (Only Back button is functional)
   // fixed: using a GUI macro
-  GUI.drawButtonHints(renderer, tr(STR_BACK), "", "", "");
+  GUI.drawButtonHintsGlyphs(renderer);
 
   renderer.displayBuffer();
 }

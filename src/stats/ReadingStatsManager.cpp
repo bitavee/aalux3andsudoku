@@ -189,6 +189,27 @@ void ReadingStatsManager::endSession(uint8_t progressPercent, uint32_t sessionPa
   save();
 }
 
+bool ReadingStatsManager::removeBook(uint8_t index) {
+  if (index >= global.bookCount) return false;
+
+  // If the active session is for this book, drop the binding so endSession
+  // doesn't write back to a stale slot after the shift.
+  if (sessionActive && sessionBookIndex == index) {
+    sessionActive = false;
+    sessionBookIndex = 0xFF;
+  } else if (sessionActive && sessionBookIndex > index && sessionBookIndex < global.bookCount) {
+    sessionBookIndex--;
+  }
+
+  for (uint8_t i = index; i + 1 < global.bookCount; ++i) {
+    memcpy(&books[i], &books[i + 1], sizeof(BookStatEntry));
+  }
+  global.bookCount--;
+  memset(&books[global.bookCount], 0, sizeof(BookStatEntry));
+
+  return save();
+}
+
 uint32_t ReadingStatsManager::getLast7SessionsMs() const {
   uint32_t total = 0;
   for (uint8_t i = 0; i < global.sessionRingCount; ++i) {

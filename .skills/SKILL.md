@@ -266,6 +266,17 @@ Reader (swappable): `Button::PageBack`/`PageForward` via `SETTINGS.sideButtonLay
 ### UITheme
 All UI rendering through `GUI` macro. Don't hardcode fonts/colours/positioning — that's what keeps Classic/Lyra/Recent6 consistent across orientations.
 
+### Bottom button hints — use the glyph band, not the rectangle bar
+New screens MUST render the bottom button hints via `GUI.drawButtonHintsGlyphs(renderer [, variant])`, not the legacy `GUI.drawButtonHints(...)` rectangle bar. The glyph band matches the home-screen style (procedural ◀ ● ▲ ▼ glyphs, no labels, no border) and stays visually consistent with `HomeRenderer::drawBottomButtonHints`.
+
+Variants (`BaseTheme::ButtonHintGlyphSet`):
+- `Navigation` (default): ◀ ● ▲ ▼ — back, confirm, up, down. Use for any list/menu where Up/Down navigate. Settings, Network mode selection, Reader quick-settings, Detailed stats, ConfirmationActivity all use this.
+- `StatsActions`: ◀ ● ⋯ ⇄ — back, confirm, "more", Reading/Finished toggle. Use ONLY where the Up button means "More" and Down means "swap views" (Statistics list, Transfer screen).
+
+Do not pass labels — the glyphs are unlabeled by design. Do not reintroduce the rectangle bar in new screens; the only remaining `drawButtonHints` callers are legacy reader sub-screens that still need text labels (chapter/page selection, dictionary, KOReader sync) and have not yet migrated.
+
+When adding a screen whose buttons can't be expressed by an existing variant, add a new `ButtonHintGlyphSet` value and draw the appropriate procedural glyphs in `BaseTheme::drawButtonHintsGlyphs` (`src/components/themes/BaseTheme.cpp`). Do not rebuild the rectangle bar.
+
 ---
 
 ## Testing Workflow (MANDATORY after every code change)
