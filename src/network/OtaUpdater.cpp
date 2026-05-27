@@ -12,6 +12,7 @@
 
 #include <memory>
 
+#include "esp_ota_ops.h"
 #include "esp_wifi.h"
 #endif
 
@@ -153,56 +154,89 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate() {
 
   render = false;
   processedSize = 0;
+  totalSize = otaSize;
+
+  // We talk to esp_ota_* directly instead of going through Arduino's Update
+  // wrapper. Update::begin allocates a 4 KB sector buffer via `new` AFTER the
+  // partition lookup; on the device that allocation silently fails once a
+  // TLS connection has fragmented the heap, surfacing as
+  //   "Update.begin(...) failed: No Error"
+  // (no _error set). esp_ota_begin doesn't need that buffer -- it writes
+  // straight to the partition -- so OTA succeeds even when contiguous heap
+  // is tight.
+
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  const esp_partition_t* nextOta = esp_ota_get_next_update_partition(NULL);
+  LOG_INF("OTA", "Running partition: %s @ 0x%x (%u bytes)", running ? running->label : "(null)",
+          running ? static_cast<unsigned>(running->address) : 0, running ? static_cast<unsigned>(running->size) : 0);
+  LOG_INF("OTA", "Next OTA partition: %s @ 0x%x (%u bytes)", nextOta ? nextOta->label : "(null)",
+          nextOta ? static_cast<unsigned>(nextOta->address) : 0, nextOta ? static_cast<unsigned>(nextOta->size) : 0);
+
+  if (!nextOta || nextOta == running) {
+    LOG_ERR("OTA", "No valid next OTA partition");
+    return INTERNAL_UPDATE_ERROR;
+  }
+  if (otaSize > nextOta->size) {
+    LOG_ERR("OTA", "Firmware too large: %u > %u", static_cast<unsigned>(otaSize), static_cast<unsigned>(nextOta->size));
+    return INTERNAL_UPDATE_ERROR;
+  }
+
+  esp_ota_handle_t otaHandle = 0;
+  LOG_INF("OTA", "esp_ota_begin(size=%u) heap=%u largest=%u", static_cast<unsigned>(otaSize),
+          static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  esp_err_t err = esp_ota_begin(nextOta, otaSize, &otaHandle);
+  if (err != ESP_OK) {
+    LOG_ERR("OTA", "esp_ota_begin failed: %s", esp_err_to_name(err));
+    return INTERNAL_UPDATE_ERROR;
+  }
+  LOG_INF("OTA", "esp_ota_begin OK (erase complete)");
 
   auto client = makeHttpsClient();
   HTTPClient http;
   http.setTimeout(15000);
   http.setConnectTimeout(15000);
 
-  LOG_INF("OTA", "Downloading %s (%u bytes, heap=%u)", otaUrl.c_str(), static_cast<unsigned>(otaSize),
-          static_cast<unsigned>(ESP.getFreeHeap()));
+  LOG_INF("OTA", "Downloading %s (heap=%u)", otaUrl.c_str(), static_cast<unsigned>(ESP.getFreeHeap()));
 
   if (!http.begin(*client, otaUrl.c_str())) {
     LOG_ERR("OTA", "HTTPClient.begin failed for OTA URL");
+    esp_ota_abort(otaHandle);
     return INTERNAL_UPDATE_ERROR;
   }
   // GitHub release download URLs redirect through objects.githubusercontent.com.
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.addHeader("User-Agent", "AALU-ESP32-" AALU_VERSION);
 
+  LOG_INF("OTA", "http.GET()...");
   const int httpCode = http.GET();
+  LOG_INF("OTA", "http.GET returned %d", httpCode);
   if (httpCode != HTTP_CODE_OK) {
     LOG_ERR("OTA", "OTA download HTTP %d", httpCode);
     http.end();
+    esp_ota_abort(otaHandle);
     return HTTP_ERROR;
   }
 
   const int reported = http.getSize();
+  LOG_INF("OTA", "Content-Length reported by server: %d", reported);
   const size_t contentLength = reported > 0 ? static_cast<size_t>(reported) : otaSize;
   if (contentLength == 0) {
     LOG_ERR("OTA", "OTA download has zero content length");
     http.end();
+    esp_ota_abort(otaHandle);
     return HTTP_ERROR;
   }
   totalSize = contentLength;
 
-  // Keep the radio responsive while we stream the binary; we'll restore power
-  // saving on every exit path below.
+  // Keep the radio responsive while we stream the binary; restored on every exit path.
   esp_wifi_set_ps(WIFI_PS_NONE);
-
-  if (!Update.begin(contentLength)) {
-    LOG_ERR("OTA", "Update.begin(%u) failed: %s", static_cast<unsigned>(contentLength), Update.errorString());
-    http.end();
-    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-    return INTERNAL_UPDATE_ERROR;
-  }
 
   NetworkClient* stream = http.getStreamPtr();
   if (stream == nullptr) {
     LOG_ERR("OTA", "HTTPClient stream is null");
-    Update.abort();
     http.end();
     esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    esp_ota_abort(otaHandle);
     return HTTP_ERROR;
   }
 
@@ -237,14 +271,13 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate() {
       continue;
     }
 
-    const size_t written = Update.write(buf, read);
-    if (written != static_cast<size_t>(read)) {
-      LOG_ERR("OTA", "Update.write short: wrote %u of %d (%s)", static_cast<unsigned>(written), read,
-              Update.errorString());
+    err = esp_ota_write(otaHandle, buf, read);
+    if (err != ESP_OK) {
+      LOG_ERR("OTA", "esp_ota_write failed at %u: %s", static_cast<unsigned>(totalRead), esp_err_to_name(err));
       break;
     }
 
-    totalRead += written;
+    totalRead += read;
     processedSize = totalRead;
     render = true;
     lastDataMs = millis();
@@ -256,21 +289,24 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate() {
   if (totalRead != contentLength) {
     LOG_ERR("OTA", "Incomplete download: %u / %u", static_cast<unsigned>(totalRead),
             static_cast<unsigned>(contentLength));
-    Update.abort();
+    esp_ota_abort(otaHandle);
     return HTTP_ERROR;
   }
 
-  if (!Update.end(true)) {
-    LOG_ERR("OTA", "Update.end failed: %s", Update.errorString());
+  err = esp_ota_end(otaHandle);
+  if (err != ESP_OK) {
+    LOG_ERR("OTA", "esp_ota_end failed: %s", esp_err_to_name(err));
     return INTERNAL_UPDATE_ERROR;
   }
 
-  if (!Update.isFinished()) {
-    LOG_ERR("OTA", "Update did not finish cleanly");
+  err = esp_ota_set_boot_partition(nextOta);
+  if (err != ESP_OK) {
+    LOG_ERR("OTA", "esp_ota_set_boot_partition failed: %s", esp_err_to_name(err));
     return INTERNAL_UPDATE_ERROR;
   }
 
-  LOG_INF("OTA", "Update completed (%u bytes)", static_cast<unsigned>(totalRead));
+  LOG_INF("OTA", "Update completed (%u bytes, boot partition set to %s)", static_cast<unsigned>(totalRead),
+          nextOta->label);
   return OK;
 }
 
