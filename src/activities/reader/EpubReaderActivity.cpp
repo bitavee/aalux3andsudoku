@@ -178,8 +178,16 @@ void EpubReaderActivity::loop() {
     return;
   }
 
+  if (mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
+      mappedInput.getHeldTime() >= ReaderUtils::QUICK_SETTINGS_LONG_PRESS_MS) {
+    openQuickSettings();
+    qsSuppressConfirmRelease = true;
+    return;
+  }
+
   // Enter reader menu activity.
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) &&
+      mappedInput.getHeldTime() < ReaderUtils::QUICK_SETTINGS_LONG_PRESS_MS) {
     const int currentPage = section ? section->currentPage + 1 : 0;
     const int totalPages = section ? section->pageCount : 0;
     const int bookProgressPercent =
@@ -437,14 +445,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       break;
     }
     case EpubReaderMenuActivity::MenuAction::QUICK_SETTINGS: {
-      // Directly modify global SETTINGS. No temp struct needed anymore.
-      qsState = QuickSettingsState::TAB_FOCUSED;
-      qsSelectedTab = 0;
-      qsSelectedItem = 0;
-      qsScrollOffset = 0;
-      qsNeedsBackgroundRender = true;
-
-      requestUpdate();
+      openQuickSettings();
       break;
     }
 
@@ -1193,7 +1194,23 @@ void EpubReaderActivity::adjustQsItemValue(int tab, int index, bool increment) {
   }
 }
 
+void EpubReaderActivity::openQuickSettings() {
+  qsState = QuickSettingsState::TAB_FOCUSED;
+  qsSelectedTab = 0;
+  qsSelectedItem = 0;
+  qsScrollOffset = 0;
+  qsNeedsBackgroundRender = true;
+  requestUpdate();
+}
+
 void EpubReaderActivity::handleQuickSettingsInput() {
+  if (qsSuppressConfirmRelease) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      qsSuppressConfirmRelease = false;
+    }
+    return;
+  }
+
   const int itemCount = getQsItemCount(qsSelectedTab);
 
   if (qsState == QuickSettingsState::TAB_FOCUSED) {
@@ -1259,6 +1276,7 @@ void EpubReaderActivity::closeAndApplyQuickSettings() {
 
   // 2. Close the overlay BEFORE the blocking reflow operation
   qsState = QuickSettingsState::CLOSED;
+  qsSuppressConfirmRelease = false;
 
   {
     RenderLock lock(*this);

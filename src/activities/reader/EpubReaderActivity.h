@@ -39,6 +39,7 @@ class EpubReaderActivity final : public Activity {
   int qsScrollOffset = 0;  // Pagination offset for the visible list
 
   bool qsNeedsBackgroundRender = false;
+  bool qsSuppressConfirmRelease = false;
 
   // Procedural helpers
   int getQsItemCount(int tab) const;
@@ -46,6 +47,7 @@ class EpubReaderActivity final : public Activity {
   const char* getQsItemValue(int tab, int index, char* tempBuf, size_t tempBufSize) const;
   void adjustQsItemValue(int tab, int index, bool increment);
   void renderQuickSettingsOverlay();
+  void openQuickSettings();
   void handleQuickSettingsInput();
 
   // Renamed to reflect new behavior: saves to SD and reflows EPUB
