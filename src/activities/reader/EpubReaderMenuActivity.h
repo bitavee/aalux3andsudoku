@@ -21,6 +21,7 @@ class EpubReaderMenuActivity final : public Activity {
     DISPLAY_QR,
     GO_HOME,
     SYNC,
+    SYNC_CLOCK,
     DELETE_CACHE,
     LOOKUP,           // Added for Dictionary functionality
     LOOKED_UP_WORDS,  // Added for Dictionary history

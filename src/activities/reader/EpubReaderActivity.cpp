@@ -29,6 +29,7 @@
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "activities/settings/ClockSyncActivity.h"
 #include "components/HomeProgressCache.h"
 #include "components/HomeRenderer.h"  // for kHeroCoverHeight / kThumbnailCoverHeight
 #include "components/UITheme.h"
@@ -583,6 +584,13 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       }
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::SYNC_CLOCK: {
+      startActivityForResult(std::make_unique<ClockSyncActivity>(renderer, mappedInput), [](const ActivityResult&) {});
+      break;
+    }
+    case EpubReaderMenuActivity::MenuAction::ROTATE_SCREEN:
+    case EpubReaderMenuActivity::MenuAction::AUTO_PAGE_TURN:
+      break;
   }
 }
 

@@ -31,7 +31,7 @@ std::vector<EpubReaderMenuActivity::MenuItem> EpubReaderMenuActivity::buildMenuI
                                                                                      bool hasDictionary,
                                                                                      bool hasLookupHistory) {
   std::vector<MenuItem> items;
-  items.reserve(14);
+  items.reserve(15);
 
   items.push_back({MenuAction::SELECT_CHAPTER, StrId::STR_SELECT_CHAPTER});
   items.push_back({MenuAction::ADD_BOOKMARK, StrId::STR_ADD_BOOKMARK});
@@ -46,6 +46,7 @@ std::vector<EpubReaderMenuActivity::MenuItem> EpubReaderMenuActivity::buildMenuI
   items.push_back({MenuAction::DISPLAY_QR, StrId::STR_DISPLAY_QR});
   items.push_back({MenuAction::GO_HOME, StrId::STR_GO_HOME_BUTTON});
   items.push_back({MenuAction::SYNC, StrId::STR_SYNC_PROGRESS});
+  items.push_back({MenuAction::SYNC_CLOCK, StrId::STR_CLOCK_SYNC});
   items.push_back({MenuAction::DELETE_CACHE, StrId::STR_DELETE_CACHE});
   items.push_back({MenuAction::QUICK_SETTINGS, StrId::STR_QUICK_SETTINGS});  // Add Quick Settings entry
 
