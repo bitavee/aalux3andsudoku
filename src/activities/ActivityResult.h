@@ -40,6 +40,11 @@ struct SyncResult {
   int page = 0;
 };
 
+struct ProgressChangeResult {
+  int spineIndex = 0;
+  int page = 0;
+};
+
 enum class NetworkMode;
 
 struct NetworkModeResult {
@@ -51,7 +56,7 @@ struct FootnoteResult {
 };
 
 using ResultVariant = std::variant<std::monostate, WifiResult, KeyboardResult, MenuResult, ChapterResult, PercentResult,
-                                   PageResult, SyncResult, NetworkModeResult, FootnoteResult>;
+                                   PageResult, SyncResult, ProgressChangeResult, NetworkModeResult, FootnoteResult>;
 
 struct ActivityResult {
   bool isCancelled = false;

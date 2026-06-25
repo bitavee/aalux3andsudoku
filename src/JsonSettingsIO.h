@@ -1,10 +1,13 @@
 #pragma once
 
+#include <vector>
+
 class CrossPointSettings;
 class CrossPointState;
 class WifiCredentialStore;
 class KOReaderCredentialStore;
 class RecentBooksStore;
+struct BookmarkEntry;
 
 namespace JsonSettingsIO {
 
@@ -27,5 +30,9 @@ bool loadKOReader(KOReaderCredentialStore& store, const char* json, bool* needsR
 // RecentBooksStore
 bool saveRecentBooks(const RecentBooksStore& store, const char* path);
 bool loadRecentBooks(RecentBooksStore& store, const char* json);
+
+// Bookmarks
+bool saveBookmarks(const std::vector<BookmarkEntry>& bookmarks, const char* path);
+bool loadBookmarks(std::vector<BookmarkEntry>& bookmarks, const char* json);
 
 }  // namespace JsonSettingsIO

@@ -11,11 +11,16 @@
 #include <Logging.h>
 #include <esp_system.h>
 
+#include <algorithm>
+
+#include "BookmarkEntry.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "EpubReaderBookmarksActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
 #include "EpubReaderFootnotesActivity.h"
 #include "EpubReaderPercentSelectionActivity.h"
+#include "JsonSettingsIO.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
 #include "MappedInputManager.h"
@@ -27,6 +32,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "stats/ReadingStatsManager.h"  // added when developing Statistics menu
+#include "util/BookmarkUtil.h"
 #include "util/ScreenshotUtil.h"
 
 // Dictionary development
@@ -359,6 +365,29 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       break;
     }
 
+    case EpubReaderMenuActivity::MenuAction::ADD_BOOKMARK: {
+      toggleBookmark();
+      requestUpdate();
+      break;
+    }
+
+    case EpubReaderMenuActivity::MenuAction::BOOKMARKS: {
+      const std::string path = epub->getPath();
+      startActivityForResult(std::make_unique<EpubReaderBookmarksActivity>(renderer, mappedInput, epub, path),
+                             [this](const ActivityResult& result) {
+                               if (!result.isCancelled && std::holds_alternative<ProgressChangeResult>(result.data)) {
+                                 const auto& jump = std::get<ProgressChangeResult>(result.data);
+                                 RenderLock lock(*this);
+                                 currentSpineIndex = jump.spineIndex;
+                                 nextPageNumber = jump.page;
+                                 section.reset();
+                               } else {
+                                 requestUpdate();
+                               }
+                             });
+      break;
+    }
+
     case EpubReaderMenuActivity::MenuAction::FOOTNOTES: {
       startActivityForResult(std::make_unique<EpubReaderFootnotesActivity>(renderer, mappedInput, currentPageFootnotes),
                              [this](const ActivityResult& result) {
@@ -551,6 +580,80 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       }
       break;
     }
+  }
+}
+
+void EpubReaderActivity::toggleBookmark() {
+  if (!epub) {
+    return;
+  }
+
+  int currentPage = 0;
+  int pageCount = 0;
+  std::string pageText;
+  {
+    RenderLock lock(*this);
+    if (!section) {
+      return;
+    }
+    pageCount = section->pageCount;
+    currentPage = section->currentPage;
+    if (currentPage >= 0 && currentPage < pageCount) {
+      if (auto page = section->loadPageFromSectionFile()) {
+        pageText.reserve(256);
+        for (const auto& el : page->elements) {
+          if (el->getTag() == TAG_PageLine) {
+            const auto& line = static_cast<const PageLine&>(*el);
+            if (line.getBlock()) {
+              for (const auto& word : line.getBlock()->getWords()) {
+                if (!pageText.empty()) {
+                  pageText += " ";
+                }
+                pageText += word;
+              }
+            }
+          }
+          if (pageText.size() >= 128) {
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  std::vector<BookmarkEntry> bookmarks;
+  const std::string path = BookmarkUtil::getBookmarkPath(epub->getPath());
+  if (Storage.exists(path.c_str())) {
+    const String json = Storage.readFile(path.c_str());
+    if (!json.isEmpty()) {
+      JsonSettingsIO::loadBookmarks(bookmarks, json.c_str());
+    }
+  }
+
+  const size_t countBefore = bookmarks.size();
+  bookmarks.erase(std::remove_if(bookmarks.begin(), bookmarks.end(),
+                                 [&](const BookmarkEntry& b) {
+                                   return b.computedSpineIndex == currentSpineIndex &&
+                                          b.computedChapterProgress == currentPage;
+                                 }),
+                  bookmarks.end());
+
+  if (bookmarks.size() == countBefore) {
+    const KOReaderPosition koPos =
+        ProgressMapper::toKOReader(epub, CrossPointPosition{currentSpineIndex, currentPage, pageCount});
+    BookmarkEntry entry;
+    entry.xpath = koPos.xpath;
+    entry.percentage = koPos.percentage;
+    entry.summary = BookmarkUtil::sanitizeBookmarkSummary(pageText);
+    entry.computedSpineIndex = static_cast<uint16_t>(currentSpineIndex);
+    entry.computedChapterPageCount = static_cast<uint16_t>(pageCount);
+    entry.computedChapterProgress = static_cast<uint16_t>(currentPage);
+    bookmarks.insert(bookmarks.begin(), entry);
+  }
+
+  Storage.mkdir(BookmarkUtil::getBookmarksDir().c_str());
+  if (!JsonSettingsIO::saveBookmarks(bookmarks, path.c_str())) {
+    LOG_ERR("ERS", "Failed to save bookmarks to: %s", path.c_str());
   }
 }
 

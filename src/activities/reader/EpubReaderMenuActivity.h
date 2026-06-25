@@ -11,6 +11,8 @@ class EpubReaderMenuActivity final : public Activity {
  public:
   enum class MenuAction {
     SELECT_CHAPTER,
+    ADD_BOOKMARK,
+    BOOKMARKS,
     FOOTNOTES,
     ROTATE_SCREEN,
     AUTO_PAGE_TURN,
