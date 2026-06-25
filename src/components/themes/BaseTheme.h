@@ -123,6 +123,9 @@ class BaseTheme {
     // reading/finished toggle. Up/down are repurposed in StatsActivity so the
     // arrow glyphs would be misleading there.
     StatsActions,
+    // Settings: back-arrow, disc (confirm), stacked up/down arrows, side-by-side
+    // left/right arrows. Left/Right step the focused value or switch tabs.
+    SettingsNav,
   };
   virtual void drawButtonHintsGlyphs(GfxRenderer& renderer,
                                      ButtonHintGlyphSet variant = ButtonHintGlyphSet::Navigation) const;

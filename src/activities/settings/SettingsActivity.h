@@ -158,8 +158,10 @@ class SettingsActivity final : public Activity {
   static constexpr int categoryCount = 4;
   static const StrId categoryNames[categoryCount];
 
-  void enterCategory(int categoryIndex);
-  void toggleCurrentSetting();
+  void changeCategory(int delta);
+  void confirmCurrentSetting();
+  void adjustSettingValue(int delta);
+  void activateCurrentSetting();
 
  public:
   explicit SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

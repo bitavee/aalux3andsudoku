@@ -80,77 +80,133 @@ void SettingsActivity::onExit() {
 }
 
 void SettingsActivity::loop() {
-  bool hasChangedCategory = false;
-
-  // Handle actions with early return
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-    if (selectedSettingIndex == 0) {
-      selectedCategoryIndex = (selectedCategoryIndex < categoryCount - 1) ? (selectedCategoryIndex + 1) : 0;
-      hasChangedCategory = true;
-      requestUpdate();
-    } else {
-      toggleCurrentSetting();
-      requestUpdate();
-      return;
-    }
+  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    SETTINGS.saveToFile();
+    onGoHome();
+    return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    if (selectedSettingIndex > 0) {
-      selectedSettingIndex = 0;
-      requestUpdate();
+  const bool onTabBar = (selectedSettingIndex == 0);
+
+  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (onTabBar) {
+      changeCategory(1);
     } else {
-      SETTINGS.saveToFile();
-      onGoHome();
+      confirmCurrentSetting();
     }
     return;
   }
 
-  // Handle navigation
-  buttonNavigator.onNextRelease([this] {
-    selectedSettingIndex = ButtonNavigator::nextIndex(selectedSettingIndex, settingsCount + 1);
-    requestUpdate();
-  });
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right)) {
+    if (onTabBar) {
+      changeCategory(1);
+    } else {
+      adjustSettingValue(1);
+    }
+    return;
+  }
 
-  buttonNavigator.onPreviousRelease([this] {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Left)) {
+    if (onTabBar) {
+      changeCategory(-1);
+    } else {
+      adjustSettingValue(-1);
+    }
+    return;
+  }
+
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Up}, [this] {
     selectedSettingIndex = ButtonNavigator::previousIndex(selectedSettingIndex, settingsCount + 1);
     requestUpdate();
   });
 
-  buttonNavigator.onNextContinuous([this, &hasChangedCategory] {
-    hasChangedCategory = true;
-    selectedCategoryIndex = ButtonNavigator::nextIndex(selectedCategoryIndex, categoryCount);
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Down}, [this] {
+    selectedSettingIndex = ButtonNavigator::nextIndex(selectedSettingIndex, settingsCount + 1);
     requestUpdate();
   });
+}
 
-  buttonNavigator.onPreviousContinuous([this, &hasChangedCategory] {
-    hasChangedCategory = true;
-    selectedCategoryIndex = ButtonNavigator::previousIndex(selectedCategoryIndex, categoryCount);
-    requestUpdate();
-  });
+void SettingsActivity::changeCategory(const int delta) {
+  selectedCategoryIndex = (delta > 0) ? ButtonNavigator::nextIndex(selectedCategoryIndex, categoryCount)
+                                      : ButtonNavigator::previousIndex(selectedCategoryIndex, categoryCount);
 
-  if (hasChangedCategory) {
-    selectedSettingIndex = (selectedSettingIndex == 0) ? 0 : 1;
-    switch (selectedCategoryIndex) {
-      case 0:
-        currentSettings = &displaySettings;
-        break;
-      case 1:
-        currentSettings = &readerSettings;
-        break;
-      case 2:
-        currentSettings = &controlsSettings;
-        break;
-      case 3:
-        currentSettings = &systemSettings;
-        break;
-    }
-    settingsCount = static_cast<int>(currentSettings->size());
+  switch (selectedCategoryIndex) {
+    case 0:
+      currentSettings = &displaySettings;
+      break;
+    case 1:
+      currentSettings = &readerSettings;
+      break;
+    case 2:
+      currentSettings = &controlsSettings;
+      break;
+    case 3:
+      currentSettings = &systemSettings;
+      break;
+  }
+
+  settingsCount = static_cast<int>(currentSettings->size());
+  selectedSettingIndex = 0;
+  requestUpdate();
+}
+
+void SettingsActivity::confirmCurrentSetting() {
+  const int selectedSetting = selectedSettingIndex - 1;
+  if (selectedSetting < 0 || selectedSetting >= settingsCount) {
+    return;
+  }
+
+  const auto& setting = (*currentSettings)[selectedSetting];
+  if (setting.nameId == StrId::STR_FONT_FAMILY || setting.type == SettingType::ACTION) {
+    activateCurrentSetting();
+  } else {
+    adjustSettingValue(1);
   }
 }
 
-void SettingsActivity::toggleCurrentSetting() {
-  int selectedSetting = selectedSettingIndex - 1;
+void SettingsActivity::adjustSettingValue(const int delta) {
+  const int selectedSetting = selectedSettingIndex - 1;
+  if (selectedSetting < 0 || selectedSetting >= settingsCount) {
+    return;
+  }
+
+  const auto& setting = (*currentSettings)[selectedSetting];
+  if (setting.nameId == StrId::STR_FONT_FAMILY || setting.valuePtr == nullptr) {
+    return;
+  }
+
+  if (setting.type == SettingType::TOGGLE) {
+    const bool currentValue = SETTINGS.*(setting.valuePtr);
+    SETTINGS.*(setting.valuePtr) = !currentValue;
+  } else if (setting.type == SettingType::ENUM) {
+    const int count = static_cast<int>(setting.enumValues.size());
+    if (count <= 0) {
+      return;
+    }
+    const int currentValue = SETTINGS.*(setting.valuePtr);
+    SETTINGS.*(setting.valuePtr) = static_cast<uint8_t>(((currentValue + delta) % count + count) % count);
+  } else if (setting.type == SettingType::VALUE) {
+    const int currentValue = SETTINGS.*(setting.valuePtr);
+    const int step = setting.valueRange.step;
+    const int minValue = setting.valueRange.min;
+    const int maxValue = setting.valueRange.max;
+    int newValue;
+    if (delta > 0) {
+      newValue = (currentValue + step > maxValue) ? minValue : currentValue + step;
+    } else {
+      newValue = (currentValue - step < minValue) ? maxValue : currentValue - step;
+    }
+    SETTINGS.*(setting.valuePtr) = static_cast<uint8_t>(newValue);
+  } else {
+    return;
+  }
+
+  SETTINGS.saveToFile();
+  requestUpdate();
+}
+
+void SettingsActivity::activateCurrentSetting() {
+  const int selectedSetting = selectedSettingIndex - 1;
   if (selectedSetting < 0 || selectedSetting >= settingsCount) {
     return;
   }
@@ -166,65 +222,49 @@ void SettingsActivity::toggleCurrentSetting() {
     return;
   }
 
-  if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
-    // Toggle the boolean value using the member pointer
-    const bool currentValue = SETTINGS.*(setting.valuePtr);
-    SETTINGS.*(setting.valuePtr) = !currentValue;
-  } else if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
-    const uint8_t currentValue = SETTINGS.*(setting.valuePtr);
-    SETTINGS.*(setting.valuePtr) = (currentValue + 1) % static_cast<uint8_t>(setting.enumValues.size());
-  } else if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
-    const int8_t currentValue = SETTINGS.*(setting.valuePtr);
-    if (currentValue + setting.valueRange.step > setting.valueRange.max) {
-      SETTINGS.*(setting.valuePtr) = setting.valueRange.min;
-    } else {
-      SETTINGS.*(setting.valuePtr) = currentValue + setting.valueRange.step;
-    }
-  } else if (setting.type == SettingType::ACTION) {
-    auto resultHandler = [this](const ActivityResult&) { SETTINGS.saveToFile(); };
-
-    switch (setting.action) {
-      case SettingAction::RemapFrontButtons:
-        startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput), resultHandler);
-        break;
-      case SettingAction::CustomiseStatusBar:
-        startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), resultHandler);
-        break;
-      case SettingAction::KOReaderSync:
-        startActivityForResult(std::make_unique<KOReaderSettingsActivity>(renderer, mappedInput), resultHandler);
-        break;
-      case SettingAction::OPDSBrowser:
-        startActivityForResult(std::make_unique<CalibreSettingsActivity>(renderer, mappedInput), resultHandler);
-        break;
-      case SettingAction::Network:
-        startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), resultHandler);
-        break;
-      case SettingAction::ClearCache:
-        startActivityForResult(std::make_unique<ClearCacheActivity>(renderer, mappedInput), resultHandler);
-        break;
-      case SettingAction::CheckForUpdates:
-        startActivityForResult(std::make_unique<OtaUpdateActivity>(renderer, mappedInput), resultHandler);
-        break;
-      case SettingAction::FileTransfer:
-        startActivityForResult(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput), resultHandler);
-        break;
-      case SettingAction::ManageFonts:
-        startActivityForResult(std::make_unique<FontDownloadActivity>(renderer, mappedInput),
-                               [this](const ActivityResult&) {
-                                 SETTINGS.saveToFile();
-                                 sdFontSystem.ensureLoaded(renderer);
-                               });
-        break;
-      case SettingAction::None:
-        // Do nothing
-        break;
-    }
-    return;  // Results will be handled in the result handler, so we can return early here
-  } else {
+  if (setting.type != SettingType::ACTION) {
     return;
   }
 
-  SETTINGS.saveToFile();
+  auto resultHandler = [this](const ActivityResult&) { SETTINGS.saveToFile(); };
+
+  switch (setting.action) {
+    case SettingAction::RemapFrontButtons:
+      startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput), resultHandler);
+      break;
+    case SettingAction::CustomiseStatusBar:
+      startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), resultHandler);
+      break;
+    case SettingAction::KOReaderSync:
+      startActivityForResult(std::make_unique<KOReaderSettingsActivity>(renderer, mappedInput), resultHandler);
+      break;
+    case SettingAction::OPDSBrowser:
+      startActivityForResult(std::make_unique<CalibreSettingsActivity>(renderer, mappedInput), resultHandler);
+      break;
+    case SettingAction::Network:
+      startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), resultHandler);
+      break;
+    case SettingAction::ClearCache:
+      startActivityForResult(std::make_unique<ClearCacheActivity>(renderer, mappedInput), resultHandler);
+      break;
+    case SettingAction::CheckForUpdates:
+      startActivityForResult(std::make_unique<OtaUpdateActivity>(renderer, mappedInput), resultHandler);
+      break;
+    case SettingAction::FileTransfer:
+      startActivityForResult(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput), resultHandler);
+      break;
+    case SettingAction::ManageFonts:
+      startActivityForResult(std::make_unique<FontDownloadActivity>(renderer, mappedInput),
+                             [this](const ActivityResult&) {
+                               SETTINGS.saveToFile();
+                               sdFontSystem.ensureLoaded(renderer);
+                             });
+      break;
+    case SettingAction::Language:
+    case SettingAction::None:
+      // Do nothing
+      break;
+  }
 }
 
 void SettingsActivity::render(RenderLock&&) {
@@ -270,7 +310,7 @@ void SettingsActivity::render(RenderLock&&) {
       },
       true);
 
-  GUI.drawButtonHintsGlyphs(renderer);
+  GUI.drawButtonHintsGlyphs(renderer, BaseTheme::ButtonHintGlyphSet::SettingsNav);
 
   // Always use standard refresh for settings screen
   renderer.displayBuffer();

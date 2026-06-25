@@ -246,6 +246,36 @@ void BaseTheme::drawButtonHintsGlyphs(GfxRenderer& renderer, ButtonHintGlyphSet 
       continue;
     }
 
+    if (variant == ButtonHintGlyphSet::SettingsNav) {
+      constexpr int kPairHalf = 5;
+      constexpr int kPairShaft = 6;
+      constexpr int kPairGap = 2;
+      if (i == 2) {
+        const int upBaseY = glyphCy - kPairGap;
+        const int upApexY = upBaseY - kPairShaft;
+        const int xUp[3] = {cx - kPairHalf, cx + kPairHalf, cx};
+        const int yUp[3] = {upBaseY, upBaseY, upApexY};
+        renderer.fillPolygon(xUp, yUp, 3, true);
+        const int downBaseY = glyphCy + kPairGap;
+        const int downApexY = downBaseY + kPairShaft;
+        const int xDown[3] = {cx - kPairHalf, cx + kPairHalf, cx};
+        const int yDown[3] = {downBaseY, downBaseY, downApexY};
+        renderer.fillPolygon(xDown, yDown, 3, true);
+      } else {
+        const int leftBaseX = cx - kPairGap;
+        const int leftApexX = leftBaseX - kPairShaft;
+        const int xLeft[3] = {leftBaseX, leftBaseX, leftApexX};
+        const int yLeft[3] = {glyphCy - kPairHalf, glyphCy + kPairHalf, glyphCy};
+        renderer.fillPolygon(xLeft, yLeft, 3, true);
+        const int rightBaseX = cx + kPairGap;
+        const int rightApexX = rightBaseX + kPairShaft;
+        const int xRight[3] = {rightBaseX, rightBaseX, rightApexX};
+        const int yRight[3] = {glyphCy - kPairHalf, glyphCy + kPairHalf, glyphCy};
+        renderer.fillPolygon(xRight, yRight, 3, true);
+      }
+      continue;
+    }
+
     // Default: navigation up/down triangles.
     if (i == 2) {
       const int xPts[3] = {cx - kGlyphHalf, cx + kGlyphHalf, cx};
