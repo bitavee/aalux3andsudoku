@@ -19,6 +19,10 @@ void ClockSyncActivity::onEnter() {
   state = SYNCING;
   syncedTime[0] = '\0';
 
+#ifdef SIMULATOR
+  // Host sim has no WiFi/NTP; runSync() fakes a successful sync so the clock can be demoed.
+  requestUpdate();
+#else
   if (WiFi.status() == WL_CONNECTED) {
     requestUpdate();
     return;
@@ -26,6 +30,7 @@ void ClockSyncActivity::onEnter() {
 
   shouldTearDownWifiOnExit = true;
   launchWifiSelection();
+#endif
 }
 
 void ClockSyncActivity::onExit() {
@@ -57,12 +62,14 @@ void ClockSyncActivity::onWifiSelectionComplete(const bool connected) {
 }
 
 void ClockSyncActivity::runSync() {
+#ifndef SIMULATOR
   if (WiFi.status() != WL_CONNECTED) {
     LOG_INF("CLK", "Manual sync requested but WiFi is not connected after selection");
     state = NO_WIFI;
     requestUpdate();
     return;
   }
+#endif
 
   const bool ok = halClock.syncFromNTP();
   if (!ok) {

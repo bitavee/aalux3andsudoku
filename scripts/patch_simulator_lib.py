@@ -45,6 +45,7 @@ LIBDEPS_DIR = env.subst("$PROJECT_LIBDEPS_DIR")
 SIM_SRC = os.path.join(LIBDEPS_DIR, PIOENV, "simulator", "src")
 HAL_GPIO_PATH = os.path.join(SIM_SRC, "HalGPIO.cpp")
 HAL_DISPLAY_PATH = os.path.join(SIM_SRC, "HalDisplay.h")
+HAL_CLOCK_PATH = os.path.join(SIM_SRC, "HalClock.cpp")
 
 # Sentinel changes per patch revision so an old patched copy doesn't satisfy
 # the idempotency check and silently miss the new fix. If we ever ship a
@@ -208,6 +209,21 @@ _HAL_DISPLAY_REPLACEMENT = """  void cleanupGrayscaleBuffers(const uint8_t *bwBu
   bool supportsStripGrayscale() const { return false; }"""
 
 
+# HalClock.cpp: the sim has no RTC and no real WiFi/NTP, so syncFromNTP() is a
+# no-op that leaves the clock unavailable and it never renders. Fake a
+# successful sync so ClockSyncActivity can demo the clock on the host
+# (getTime() already returns the host wall clock).
+HAL_CLOCK_SENTINEL = "sim: fake a successful NTP sync"
+
+_HAL_CLOCK_ORIGINAL = """bool HalClock::syncFromNTP() { return _available; }"""
+
+_HAL_CLOCK_REPLACEMENT = """bool HalClock::syncFromNTP() {
+  // sim: fake a successful NTP sync so the clock becomes available + renders.
+  _available = true;
+  return true;
+}"""
+
+
 def _apply(label: str, original: str, replacement: str, src: str) -> str:
     if replacement in src:
         return src  # already patched (handled by caller via sentinel, but defensive)
@@ -248,4 +264,17 @@ else:
     else:
         body = _apply("HalDisplay grayscale stubs", _HAL_DISPLAY_ORIGINAL, _HAL_DISPLAY_REPLACEMENT, body)
         with open(HAL_DISPLAY_PATH, "w", encoding="utf-8") as fh:
+            fh.write(body)
+
+if not os.path.exists(HAL_CLOCK_PATH):
+    print(f"[sim-patch] {HAL_CLOCK_PATH} missing — will retry next build")
+else:
+    with open(HAL_CLOCK_PATH, "r", encoding="utf-8") as fh:
+        body = fh.read()
+
+    if HAL_CLOCK_SENTINEL in body:
+        pass  # already patched
+    else:
+        body = _apply("HalClock fake sync", _HAL_CLOCK_ORIGINAL, _HAL_CLOCK_REPLACEMENT, body)
+        with open(HAL_CLOCK_PATH, "w", encoding="utf-8") as fh:
             fh.write(body)
