@@ -343,7 +343,7 @@ logSerial.flush();   // before suspected crash
 CI runs three required jobs on every push to `master` and every PR (`ci.yml`): `clang-format`, `cppcheck`, `build`. A failing run on `master` blocks the next release (`Release` only fires after `CI (build)` succeeds). Treat a red `master` as stop-the-line.
 
 Rules:
-1. **Before declaring any task done**, run the full [Testing Workflow](#testing-workflow-mandatory-after-every-code-change) locally — all four steps green, no exceptions, no "the change was tiny."
+1. **Run the full local CI mirror before every commit — hard pre-commit gate.** Before any `git commit` that touches code (`*.c`/`*.cpp`/`*.h`, `platformio.ini`, `scripts/`, `lib/I18n/translations/*.yaml`) — and before declaring any task done — run the full [Testing Workflow](#testing-workflow-mandatory-after-every-code-change) on the exact tree you are about to commit and confirm all four steps are green. The three CI jobs (`clang-format`, `cppcheck`, `build`) are a strict subset of that workflow, so all-green locally is what guarantees CI won't fail. Never `git commit` on an unrun or red check — not for a "tiny" change, not to "save progress," not for a version bump. If you skipped a step, you are not ready to commit.
 2. **After pushing**, check the CI run on the pushed branch and wait for it to finish:
    ```bash
    GH_HOST=github.com gh run list --repo <owner>/<repo> --branch "$(git branch --show-current)" --limit 3
