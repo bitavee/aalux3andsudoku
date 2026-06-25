@@ -21,10 +21,13 @@
 
 namespace {
 
-// Cover height the boot resuming card requests from the thumb cache. Matches
-// the recents-row thumbnail so any book that has been opened before already
-// has the BMP on disk -- no thumb generation during boot.
-constexpr int kBootCoverThumbHeight = 150;
+// Cover height the boot resuming card requests from the thumb cache. Bound to
+// the recents-row thumbnail height so any book that has been opened before
+// already has the BMP on disk -- no thumb generation during boot. These two
+// MUST stay equal: the thumb filename embeds the height (thumb_<H>.bmp), and
+// only kThumbnailCoverHeight is ever generated, so a divergent value would
+// always miss on disk and render a blank placeholder.
+constexpr int kBootCoverThumbHeight = HomeRenderer::kThumbnailCoverHeight;
 
 constexpr int kBootCardCoverW = 120;
 constexpr int kBootCardCoverH = 180;
