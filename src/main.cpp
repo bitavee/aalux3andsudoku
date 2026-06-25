@@ -21,6 +21,7 @@
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "SdCardFontSystem.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/boot_sleep/BootActivity.h"
@@ -35,6 +36,7 @@ GfxRenderer renderer(display);
 ActivityManager activityManager(renderer, mappedInputManager);
 FontDecompressor fontDecompressor;
 FontCacheManager fontCacheManager(renderer.getFontMap(), renderer.getSdCardFonts());
+SdCardFontSystem sdFontSystem;
 
 // Fonts
 EpdFont bookerly14RegularFont(&bookerly_14_regular);
@@ -269,6 +271,8 @@ void setup() {
   LOG_DBG("MAIN", "Starting AALU version " AALU_VERSION);
 
   setupDisplayAndFonts();
+
+  sdFontSystem.begin(renderer);
 
   // Load persisted state up-front so we can decide whether to show the boot
   // logo or jump straight to the resuming card. Doing this *before* any first

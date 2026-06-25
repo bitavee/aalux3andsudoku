@@ -27,6 +27,7 @@
 #include "QrDisplayActivity.h"
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
+#include "SdCardFontSystem.h"
 #include "components/HomeProgressCache.h"
 #include "components/HomeRenderer.h"  // for kHeroCoverHeight / kThumbnailCoverHeight
 #include "components/UITheme.h"
@@ -1191,6 +1192,7 @@ const char* EpubReaderActivity::getQsItemValue(int tab, int index, char* tempBuf
   if (tab == 0) {
     switch (index) {
       case 0:
+        if (SETTINGS.sdFontFamilyName[0] != '\0') return SETTINGS.sdFontFamilyName;
         return (SETTINGS.fontFamily == 0) ? tr(STR_BOOKERLY) : tr(STR_NOTO_SANS);
       case 1:
         return (SETTINGS.fontSize == 0)   ? tr(STR_X_SMALL)
@@ -1248,9 +1250,32 @@ void EpubReaderActivity::adjustQsItemValue(int tab, int index, bool increment) {
 
   if (tab == 0) {
     switch (index) {
-      case 0:
-        cycle(SETTINGS.fontFamily, 2, increment);
+      case 0: {
+        const auto& families = sdFontSystem.registry().getFamilies();
+        const int sdCount = static_cast<int>(families.size());
+        const int total = CrossPointSettings::BUILTIN_FONT_COUNT + sdCount;
+        int current;
+        if (SETTINGS.sdFontFamilyName[0] != '\0') {
+          current = CrossPointSettings::BUILTIN_FONT_COUNT;
+          for (int i = 0; i < sdCount; i++) {
+            if (families[i].name == SETTINGS.sdFontFamilyName) {
+              current = CrossPointSettings::BUILTIN_FONT_COUNT + i;
+              break;
+            }
+          }
+        } else {
+          current = SETTINGS.fontFamily < CrossPointSettings::BUILTIN_FONT_COUNT ? SETTINGS.fontFamily : 0;
+        }
+        const int next = increment ? (current + 1) % total : (current == 0 ? total - 1 : current - 1);
+        if (next < CrossPointSettings::BUILTIN_FONT_COUNT) {
+          SETTINGS.fontFamily = static_cast<uint8_t>(next);
+          SETTINGS.sdFontFamilyName[0] = '\0';
+        } else {
+          snprintf(SETTINGS.sdFontFamilyName, sizeof(SETTINGS.sdFontFamilyName), "%s",
+                   families[next - CrossPointSettings::BUILTIN_FONT_COUNT].name.c_str());
+        }
         break;
+      }
       case 1:
         cycle(SETTINGS.fontSize, 5, increment);
         break;
@@ -1376,6 +1401,8 @@ void EpubReaderActivity::handleQuickSettingsInput() {
 void EpubReaderActivity::closeAndApplyQuickSettings() {
   // 1. Commit all direct global modifications to SD card
   SETTINGS.saveToFile();
+
+  sdFontSystem.ensureLoaded(renderer);
 
   // 2. Close the overlay BEFORE the blocking reflow operation
   qsState = QuickSettingsState::CLOSED;

@@ -129,6 +129,8 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
   // bookshelf refresh gesture; persists across cache wipes.
   doc["bookshelfRefreshHintSeen"] = s.bookshelfRefreshHintSeen;
 
+  doc["sdFontFamilyName"] = s.sdFontFamilyName;
+
   String json;
   serializeJson(doc, json);
   return Storage.writeFile(path, json);
@@ -223,6 +225,10 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
 
   // Hidden flag: missing on legacy installs means "not yet seen" → default 0.
   s.bookshelfRefreshHintSeen = clamp(doc["bookshelfRefreshHintSeen"] | (uint8_t)0, (uint8_t)2, (uint8_t)0);
+
+  const char* sdfn = doc["sdFontFamilyName"] | "";
+  strncpy(s.sdFontFamilyName, sdfn, sizeof(s.sdFontFamilyName) - 1);
+  s.sdFontFamilyName[sizeof(s.sdFontFamilyName) - 1] = '\0';
 
   LOG_DBG("CPS", "Settings loaded from file");
 

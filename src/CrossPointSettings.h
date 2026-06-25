@@ -100,6 +100,7 @@ class CrossPointSettings {
   // future features. Users on OpenDyslexic auto-migrate to Bookerly via JsonSettingsIO's
   // ENUM clamp (value 2 >= enumValues.size() == 2 -> defaults back to BOOKERLY).
   enum FONT_FAMILY { BOOKERLY = 0, NOTOSANS = 1, FONT_FAMILY_COUNT };
+  static constexpr uint8_t BUILTIN_FONT_COUNT = FONT_FAMILY_COUNT;
   // Font size options
   enum FONT_SIZE { EXTRA_SMALL = 0, SMALL = 1, MEDIUM = 2, LARGE = 3, EXTRA_LARGE = 4, FONT_SIZE_COUNT };
   enum LINE_COMPRESSION { TIGHT = 0, NORMAL = 1, WIDE = 2, LINE_COMPRESSION_COUNT };
@@ -193,6 +194,7 @@ class CrossPointSettings {
   char opdsServerUrl[128] = "";
   char opdsUsername[64] = "";
   char opdsPassword[64] = "";
+  char sdFontFamilyName[32] = "";
   // Hide battery percentage
   uint8_t hideBatteryPercentage = HIDE_NEVER;
   // Long-press chapter skip on side buttons
@@ -209,6 +211,10 @@ class CrossPointSettings {
   // one-time "Hold Back to refresh" hint. Persists across cache wipes — once
   // the user has learned the gesture, the hint never re-appears.
   uint8_t bookshelfRefreshHintSeen = 0;
+
+  using SdFontIdResolver = int (*)(void* ctx, const char* familyName, uint8_t fontSize);
+  SdFontIdResolver sdFontIdResolver = nullptr;
+  void* sdFontResolverCtx = nullptr;
 
   ~CrossPointSettings() = default;
 

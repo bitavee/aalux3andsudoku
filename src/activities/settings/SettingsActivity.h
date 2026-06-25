@@ -22,6 +22,7 @@ enum class SettingAction {
   CheckForUpdates,
   Language,
   FileTransfer,
+  ManageFonts,
 };
 
 struct SettingInfo {

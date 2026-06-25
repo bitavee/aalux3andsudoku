@@ -7,9 +7,12 @@
 #include "CalibreSettingsActivity.h"
 #include "ClearCacheActivity.h"
 #include "CrossPointSettings.h"
+#include "FontDownloadActivity.h"
+#include "FontSelectionActivity.h"
 #include "KOReaderSettingsActivity.h"
 #include "MappedInputManager.h"
 #include "OtaUpdateActivity.h"
+#include "SdCardFontSystem.h"
 #include "SettingsList.h"
 #include "StatusBarSettingsActivity.h"
 #include "activities/network/CrossPointWebServerActivity.h"
@@ -55,6 +58,7 @@ void SettingsActivity::onEnter() {
   // Language selector removed in 1.2.0 — firmware ships English-only. The LanguageSelectActivity
   // class is left in place for now in case multi-lang support returns; the dead-code-elimination
   // pass removes it from the binary since no reachable code references it.
+  readerSettings.push_back(SettingInfo::Action(StrId::STR_MANAGE_FONTS, SettingAction::ManageFonts));
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
 
   // Reset selection to first category
@@ -153,6 +157,15 @@ void SettingsActivity::toggleCurrentSetting() {
 
   const auto& setting = (*currentSettings)[selectedSetting];
 
+  if (setting.nameId == StrId::STR_FONT_FAMILY) {
+    startActivityForResult(std::make_unique<FontSelectionActivity>(renderer, mappedInput, &sdFontSystem.registry()),
+                           [this](const ActivityResult&) {
+                             SETTINGS.saveToFile();
+                             sdFontSystem.ensureLoaded(renderer);
+                           });
+    return;
+  }
+
   if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
     // Toggle the boolean value using the member pointer
     const bool currentValue = SETTINGS.*(setting.valuePtr);
@@ -194,6 +207,13 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::FileTransfer:
         startActivityForResult(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput), resultHandler);
+        break;
+      case SettingAction::ManageFonts:
+        startActivityForResult(std::make_unique<FontDownloadActivity>(renderer, mappedInput),
+                               [this](const ActivityResult&) {
+                                 SETTINGS.saveToFile();
+                                 sdFontSystem.ensureLoaded(renderer);
+                               });
         break;
       case SettingAction::None:
         // Do nothing
