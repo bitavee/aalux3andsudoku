@@ -67,7 +67,7 @@ bool WifiCredentialStore::loadFromFile() {
 }
 
 bool WifiCredentialStore::loadFromBinaryFile() {
-  HalFile file;
+  FsFile file;
   if (!Storage.openFileForRead("WCS", WIFI_FILE_BIN, file)) {
     return false;
   }
@@ -76,6 +76,7 @@ bool WifiCredentialStore::loadFromBinaryFile() {
   serialization::readPod(file, version);
   if (version > WIFI_FILE_VERSION) {
     LOG_DBG("WCS", "Unknown file version: %u", version);
+    file.close();
     return false;
   }
 
@@ -97,6 +98,7 @@ bool WifiCredentialStore::loadFromBinaryFile() {
     credentials.push_back(cred);
   }
 
+  file.close();
   // LOG_DBG("WCS", "Loaded %zu WiFi credentials from binary file", credentials.size());
   return true;
 }

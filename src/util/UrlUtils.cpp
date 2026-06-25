@@ -2,6 +2,8 @@
 
 namespace UrlUtils {
 
+bool isHttpsUrl(const std::string& url) { return url.rfind("https://", 0) == 0; }
+
 std::string ensureProtocol(const std::string& url) {
   if (url.find("://") == std::string::npos) {
     return "http://" + url;
@@ -35,16 +37,11 @@ std::string buildUrl(const std::string& serverUrl, const std::string& path) {
     // Absolute path - use just the host
     return extractHost(urlWithProtocol) + path;
   }
-  // Relative path - strip query string from base before appending
-  std::string base = urlWithProtocol;
-  const size_t queryPos = base.find('?');
-  if (queryPos != std::string::npos) {
-    base.resize(queryPos);
+  // Relative path - append to server URL
+  if (urlWithProtocol.back() == '/') {
+    return urlWithProtocol + path;
   }
-  if (base.back() == '/') {
-    return base + path;
-  }
-  return base + "/" + path;
+  return urlWithProtocol + "/" + path;
 }
 
 }  // namespace UrlUtils

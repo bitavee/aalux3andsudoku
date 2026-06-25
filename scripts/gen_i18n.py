@@ -557,6 +557,7 @@ def generate_keys_header(
         "EN", "ES", "FR", "DE", "CS", "PT", "RU", "SV", "RO", "CA", "UK",
         "BE", "IT", "PL", "FI", "DA", "NL", "TR", "KK", "HU", "LT", "SI",
     ]
+    v1_codes = [c for c in v1_codes if c in languages]
     lines.append("// V1 language.bin migration table (frozen enum order from 2f969a9)")
     lines.append("constexpr Language V1_LANGUAGES[] = {")
     lines.append("    " + ", ".join(f"Language::{c}" for c in v1_codes) + ",")

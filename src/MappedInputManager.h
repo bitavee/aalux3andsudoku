@@ -2,11 +2,9 @@
 
 #include <HalGPIO.h>
 
-class GfxRenderer;
-
 class MappedInputManager {
  public:
-  enum class Button { Back, Confirm, Left, Right, Up, Down, Power, PageBack, PageForward, NavNext, NavPrevious };
+  enum class Button { Back, Confirm, Left, Right, Up, Down, Power, PageBack, PageForward };
 
   struct Labels {
     const char* btn1;
@@ -15,7 +13,7 @@ class MappedInputManager {
     const char* btn4;
   };
 
-  MappedInputManager(HalGPIO& gpio, const GfxRenderer& renderer) : gpio(gpio), renderer(renderer) {}
+  explicit MappedInputManager(HalGPIO& gpio) : gpio(gpio) {}
 
   void update() const { gpio.update(); }
   bool wasPressed(Button button) const;
@@ -28,20 +26,8 @@ class MappedInputManager {
   // Returns the raw front button index that was pressed this frame (or -1 if none).
   int getPressedFrontButton() const;
 
-  // True when the control axis is flipped relative to the physical buttons: the user opted into
-  // orientation-following front buttons AND the screen is *currently rendered* rotated (INVERTED /
-  // LANDSCAPE_CCW). Keyed on the live renderer orientation rather than the persisted reader setting,
-  // so portrait UI (home, settings) never swaps while the reader and its menus do.
-  [[nodiscard]] bool isNavDirectionSwapped() const;
-
  private:
   HalGPIO& gpio;
-  // Logical-to-physical button mapping depends on what the user is actually looking at: when the
-  // screen is rendered rotated, the directional buttons must flip to match. The renderer is the only
-  // authority on the *live* orientation (the reader rotates it and restores portrait on exit), so we
-  // read it here instead of CrossPointSettings.orientation, which is just the persisted reader
-  // preference and stays "rotated" even while portrait UI like home/settings is on screen.
-  const GfxRenderer& renderer;
 
   bool mapButton(Button button, bool (HalGPIO::*fn)(uint8_t) const) const;
 };

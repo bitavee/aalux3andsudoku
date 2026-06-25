@@ -4,6 +4,7 @@
 #include <Serialization.h>
 #include <ZipFile.h>
 
+#include <deque>
 #include <vector>
 
 #include "FsHelpers.h"
@@ -186,14 +187,13 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
   // This is O(n*log(m)) instead of O(n*m) while avoiding memory exhaustion.
   // See: https://github.com/crosspoint-reader/crosspoint-reader/issues/134
 
-  std::vector<uint32_t> spineSizes;
+  std::deque<uint32_t> spineSizes;
   bool useBatchSizes = false;
 
   if (spineCount >= LARGE_SPINE_THRESHOLD) {
     LOG_DBG("BMC", "Using batch size lookup for %d spine items", spineCount);
 
-    std::vector<ZipFile::SizeTarget> targets;
-    targets.reserve(spineCount);
+    std::deque<ZipFile::SizeTarget> targets;
 
     spineFile.seek(0);
     for (int i = 0; i < spineCount; i++) {

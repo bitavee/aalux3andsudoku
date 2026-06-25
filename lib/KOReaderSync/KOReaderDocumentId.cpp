@@ -42,7 +42,7 @@ size_t KOReaderDocumentId::getOffset(int i) {
 }
 
 std::string KOReaderDocumentId::calculate(const std::string& filePath) {
-  HalFile file;
+  FsFile file;
   if (!Storage.openFileForRead("KODoc", filePath, file)) {
     LOG_DBG("KODoc", "Failed to open file: %s", filePath.c_str());
     return "";
@@ -83,6 +83,8 @@ std::string KOReaderDocumentId::calculate(const std::string& filePath) {
       totalBytesRead += bytesRead;
     }
   }
+
+  file.close();
 
   // Calculate final hash
   md5.calculate();

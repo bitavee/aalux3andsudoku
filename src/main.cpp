@@ -34,7 +34,7 @@ MappedInputManager mappedInputManager(gpio);
 GfxRenderer renderer(display);
 ActivityManager activityManager(renderer, mappedInputManager);
 FontDecompressor fontDecompressor;
-FontCacheManager fontCacheManager(renderer.getFontMap());
+FontCacheManager fontCacheManager(renderer.getFontMap(), renderer.getSdCardFonts());
 
 // Fonts
 EpdFont bookerly14RegularFont(&bookerly_14_regular);
@@ -242,7 +242,7 @@ void setup() {
   HalSystem::clearPanic();  // TODO: move this to an activity when we have one to display the panic info
 
   SETTINGS.loadFromFile();
-  I18N.loadSettings();
+  I18N.setLanguage(Language::EN);
   KOREADER_STORE.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
