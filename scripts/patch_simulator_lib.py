@@ -44,6 +44,7 @@ PIOENV = env.subst("$PIOENV")
 LIBDEPS_DIR = env.subst("$PROJECT_LIBDEPS_DIR")
 SIM_SRC = os.path.join(LIBDEPS_DIR, PIOENV, "simulator", "src")
 HAL_GPIO_PATH = os.path.join(SIM_SRC, "HalGPIO.cpp")
+HAL_DISPLAY_PATH = os.path.join(SIM_SRC, "HalDisplay.h")
 
 # Sentinel changes per patch revision so an old patched copy doesn't satisfy
 # the idempotency check and silently miss the new fix. If we ever ship a
@@ -184,6 +185,29 @@ _HAL_GPIO_HELDTIME_REPLACEMENT = """unsigned long HalGPIO::getHeldTime() const {
 }"""
 
 
+# HalDisplay.h: AALU's merged GfxRenderer calls the device differential-refresh
+# and tiled-grayscale API, which the sim lib's HalDisplay predates. Inject no-op
+# / fallback stubs. supportsStripGrayscale() returns false so the renderer takes
+# its existing non-strip grayscale path (which the sim already supports).
+HAL_DISPLAY_SENTINEL = "AALU: device differential-refresh / tiled-grayscale API"
+
+_HAL_DISPLAY_ORIGINAL = """  void cleanupGrayscaleBuffers(const uint8_t *bwBuffer);"""
+
+_HAL_DISPLAY_REPLACEMENT = """  void cleanupGrayscaleBuffers(const uint8_t *bwBuffer);
+
+  // AALU: device differential-refresh / tiled-grayscale API. The sim has no
+  // e-ink controller, so strip grayscale is unsupported (the renderer falls
+  // back to its non-strip path) and the base/precondition calls degrade to a
+  // normal present / no-op.
+  void displayGrayscaleBase(RefreshMode fallback = HALF_REFRESH, bool turnOffScreen = false) {
+    displayBuffer(fallback, turnOffScreen);
+  }
+  void preconditionGrayscale() {}
+  void preconditionGrayscale(uint16_t, uint16_t, uint16_t, uint16_t) {}
+  void writeGrayscalePlaneStrip(bool, const uint8_t *, uint16_t, uint16_t) {}
+  bool supportsStripGrayscale() const { return false; }"""
+
+
 def _apply(label: str, original: str, replacement: str, src: str) -> str:
     if replacement in src:
         return src  # already patched (handled by caller via sentinel, but defensive)
@@ -211,4 +235,17 @@ else:
         body = _apply("HalGPIO::update", _HAL_GPIO_UPDATE_ORIGINAL, _HAL_GPIO_UPDATE_REPLACEMENT, body)
         body = _apply("HalGPIO::getHeldTime", _HAL_GPIO_HELDTIME_ORIGINAL, _HAL_GPIO_HELDTIME_REPLACEMENT, body)
         with open(HAL_GPIO_PATH, "w", encoding="utf-8") as fh:
+            fh.write(body)
+
+if not os.path.exists(HAL_DISPLAY_PATH):
+    print(f"[sim-patch] {HAL_DISPLAY_PATH} missing — will retry next build")
+else:
+    with open(HAL_DISPLAY_PATH, "r", encoding="utf-8") as fh:
+        body = fh.read()
+
+    if HAL_DISPLAY_SENTINEL in body:
+        pass  # already patched
+    else:
+        body = _apply("HalDisplay grayscale stubs", _HAL_DISPLAY_ORIGINAL, _HAL_DISPLAY_REPLACEMENT, body)
+        with open(HAL_DISPLAY_PATH, "w", encoding="utf-8") as fh:
             fh.write(body)
