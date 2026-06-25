@@ -8,7 +8,7 @@
 
 struct ZipInflateCtx {
   InflateReader reader;  // Must be first — callback casts uzlib_uncomp* to ZipInflateCtx*
-  FsFile* file = nullptr;
+  HalFile* file = nullptr;
   size_t fileRemaining = 0;
   uint8_t* readBuf = nullptr;
   size_t readBufSize = 0;
@@ -278,6 +278,7 @@ bool ZipFile::open() {
 
 bool ZipFile::close() {
   if (file) {
+    // Explicit close() required: member variable persists beyond function scope
     file.close();
   }
   lastCentralDirPos = 0;
@@ -295,7 +296,7 @@ bool ZipFile::getInflatedFileSize(const char* filename, size_t* size) {
   return true;
 }
 
-int ZipFile::fillUncompressedSizes(std::vector<SizeTarget>& targets, std::vector<uint32_t>& sizes) {
+int ZipFile::fillUncompressedSizes(std::deque<SizeTarget>& targets, std::deque<uint32_t>& sizes) {
   if (targets.empty()) {
     return 0;
   }
@@ -396,37 +397,34 @@ uint8_t* ZipFile::readFileToMemory(const char* filename, size_t* size, const boo
 
     // Continue out of block with data set
   } else if (fileStat.method == ZIP_METHOD_DEFLATED) {
-    // Read out deflated content from file
-    const auto deflatedData = static_cast<uint8_t*>(malloc(deflatedDataSize));
-    if (deflatedData == nullptr) {
-      LOG_ERR("ZIP", "Failed to allocate memory for decompression buffer");
+    auto* fileReadBuffer = static_cast<uint8_t*>(malloc(1024));
+    if (!fileReadBuffer) {
+      LOG_ERR("ZIP", "Failed to allocate memory for zip file read buffer");
       free(data);
       return nullptr;
     }
 
-    const size_t dataRead = file.read(deflatedData, deflatedDataSize);
+    ZipInflateCtx ctx;
+    ctx.file = &file;
+    ctx.fileRemaining = deflatedDataSize;
+    ctx.readBuf = fileReadBuffer;
+    ctx.readBufSize = 1024;
 
-    if (dataRead != deflatedDataSize) {
-      LOG_ERR("ZIP", "Failed to read data, expected %d got %d", deflatedDataSize, dataRead);
-      free(deflatedData);
+    if (!ctx.reader.init(true)) {
+      LOG_ERR("ZIP", "Failed to init inflate reader");
+      free(fileReadBuffer);
       free(data);
       return nullptr;
     }
+    ctx.reader.setReadCallback(zipReadCallback);
 
-    bool success = false;
-    {
-      InflateReader r;
-      r.init(false);
-      r.setSource(deflatedData, deflatedDataSize);
-      success = r.read(data, inflatedDataSize);
-    }
-    free(deflatedData);
-
-    if (!success) {
+    if (!ctx.reader.read(data, inflatedDataSize)) {
       LOG_ERR("ZIP", "Failed to inflate file");
+      free(fileReadBuffer);
       free(data);
       return nullptr;
     }
+    free(fileReadBuffer);
 
     // Continue out of block with data set
   } else {

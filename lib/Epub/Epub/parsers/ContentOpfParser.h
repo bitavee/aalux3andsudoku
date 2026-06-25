@@ -2,6 +2,7 @@
 #include <Print.h>
 
 #include <algorithm>
+#include <deque>
 #include <vector>
 
 #include "Epub.h"
@@ -36,7 +37,7 @@ class ContentOpfParser final : public Print {
   XML_Parser parser = nullptr;
   ParserState state = START;
   BookMetadataCache* cache;
-  FsFile tempItemStore;
+  HalFile tempItemStore;
   std::string coverItemId;
 
   // Index for fast idref→href lookup (used only for large EPUBs)
@@ -45,7 +46,7 @@ class ContentOpfParser final : public Print {
     uint16_t idLen;       // length for collision reduction
     uint32_t fileOffset;  // offset in .items.bin
   };
-  std::vector<ItemIndexEntry> itemIndex;
+  std::deque<ItemIndexEntry> itemIndex;
   bool useItemIndex = false;
 
   static constexpr uint16_t LARGE_SPINE_THRESHOLD = 400;

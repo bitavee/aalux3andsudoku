@@ -4,8 +4,11 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace FsHelpers {
+
+std::string decodeUriEscapes(const std::string& path);
 
 std::string normalisePath(const std::string& path);
 
@@ -35,6 +38,8 @@ inline uint64_t cachePathHash(const std::string& s) {
   return static_cast<uint64_t>(std::hash<std::string>{}(s));
 #endif
 }
+
+void sortFileList(std::vector<std::string>& strs);
 
 /**
  * Check if the given filename ends with the specified extension (case-insensitive).
@@ -82,5 +87,18 @@ inline bool hasTxtExtension(const String& fileName) {
 
 // Check for .md extension (case-insensitive)
 bool hasMarkdownExtension(std::string_view fileName);
+
+// Check for .css extension (case-insensitive)
+bool hasCssExtension(std::string_view fileName);
+inline bool hasCssExtension(const String& fileName) {
+  return hasCssExtension(std::string_view{fileName.c_str(), fileName.length()});
+}
+std::string extractFolderPath(const std::string& filePath);
+
+/**
+ * Sanitize a filename/path component for FAT32 in a caller-provided buffer.
+ * Replaces invalid path characters, spaces, and control characters with '-'.
+ */
+void sanitizePathComponentForFat32(const char* input, char* output, size_t maxLen);
 
 }  // namespace FsHelpers

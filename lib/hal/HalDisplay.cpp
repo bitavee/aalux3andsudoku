@@ -8,9 +8,27 @@ HalDisplay::HalDisplay() : einkDisplay(EPD_SCLK, EPD_MOSI, EPD_CS, EPD_DC, EPD_R
 
 HalDisplay::~HalDisplay() {}
 
-void HalDisplay::begin() {
-  // New SDK handles X3 initialization and resync automatically or via internal logic
+void HalDisplay::begin(bool seamless) {
+  // Set X3-specific panel mode before initializing.
+  if (gpio.deviceIsX3()) {
+    einkDisplay.setDisplayX3();
+  }
+
   einkDisplay.begin();
+
+  if (seamless) {
+    // Defuse the SDK's X3 _x3InitialFullSyncsRemaining counter (no-op on X4)
+    // so the first paint isn't promoted to FULL (~770ms). Skips the wakeup-
+    // gated requestResync() below for the same reason.
+    einkDisplay.skipInitialResync();
+    return;
+  }
+  // Request resync after specific wakeup events to ensure clean display state.
+  const auto wakeupReason = gpio.getWakeupReason();
+  if (wakeupReason == HalGPIO::WakeupReason::PowerButton || wakeupReason == HalGPIO::WakeupReason::AfterFlash ||
+      wakeupReason == HalGPIO::WakeupReason::Other) {
+    einkDisplay.requestResync();
+  }
 }
 
 void HalDisplay::clearScreen(uint8_t color) const { einkDisplay.clearScreen(color); }
@@ -54,10 +72,27 @@ void HalDisplay::copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* m
   einkDisplay.copyGrayscaleBuffers(lsbBuffer, msbBuffer);
 }
 
+void HalDisplay::displayGrayscaleBase(RefreshMode fallback, bool turnOffScreen) {
+  einkDisplay.displayGrayscaleBase(convertRefreshMode(fallback), turnOffScreen);
+}
+
+void HalDisplay::preconditionGrayscale() { einkDisplay.preconditionGrayscale(); }
+
+void HalDisplay::preconditionGrayscale(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+  einkDisplay.preconditionGrayscale(x, y, w, h);
+}
+
 void HalDisplay::copyGrayscaleLsbBuffers(const uint8_t* lsbBuffer) { einkDisplay.copyGrayscaleLsbBuffers(lsbBuffer); }
 void HalDisplay::copyGrayscaleMsbBuffers(const uint8_t* msbBuffer) { einkDisplay.copyGrayscaleMsbBuffers(msbBuffer); }
 void HalDisplay::cleanupGrayscaleBuffers(const uint8_t* bwBuffer) { einkDisplay.cleanupGrayscaleBuffers(bwBuffer); }
 void HalDisplay::displayGrayBuffer(bool turnOffScreen) { einkDisplay.displayGrayBuffer(turnOffScreen); }
+
+void HalDisplay::writeGrayscalePlaneStrip(bool lsbPlane, const uint8_t* rows, uint16_t yStart, uint16_t numRows) {
+  einkDisplay.writeGrayscalePlaneStrip(lsbPlane ? EInkDisplay::GRAY_PLANE_LSB : EInkDisplay::GRAY_PLANE_MSB, rows,
+                                       yStart, numRows);
+}
+
+bool HalDisplay::supportsStripGrayscale() const { return einkDisplay.supportsStripGrayscale(); }
 
 // Use the constants defined in the header to bypass SDK getter issues
 uint16_t HalDisplay::getDisplayWidth() const { return DISPLAY_WIDTH; }
