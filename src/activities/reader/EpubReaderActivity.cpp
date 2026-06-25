@@ -6,6 +6,7 @@
 #include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
+#include <HalClock.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -421,6 +422,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
         orientedMarginTop += SETTINGS.screenMargin;
         orientedMarginLeft += SETTINGS.screenMargin;
         orientedMarginRight += SETTINGS.screenMargin;
+        orientedMarginTop += readerClockBandHeight();
 
         const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
         if (automaticPageTurnActive &&
@@ -777,6 +779,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
   orientedMarginTop += SETTINGS.screenMargin;
   orientedMarginLeft += SETTINGS.screenMargin;
   orientedMarginRight += SETTINGS.screenMargin;
+  orientedMarginTop += readerClockBandHeight();
 
   const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
   if (automaticPageTurnActive &&
@@ -1048,6 +1051,15 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   }
 }
 
+int EpubReaderActivity::readerClockBandHeight() const {
+  if (SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_MODE::STATUS_BAR_CLOCK_HIDE ||
+      !halClock.isAvailable()) {
+    return 0;
+  }
+  constexpr int kReaderClockGap = 6;
+  return renderer.getLineHeight(SMALL_FONT_ID) + kReaderClockGap;
+}
+
 void EpubReaderActivity::renderStatusBar() const {
   // Calculate progress in book
   const int currentPage = section->currentPage + 1;
@@ -1082,7 +1094,19 @@ void EpubReaderActivity::renderStatusBar() const {
     title = epub->getTitle();
   }
 
-  GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset);
+  GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true);
+
+  if (readerClockBandHeight() > 0) {
+    char timeBuf[9];
+    if (halClock.formatTime(timeBuf, sizeof(timeBuf), SETTINGS.clockUtcOffsetQ, SETTINGS.clockFormat == 1)) {
+      int orientedTop, orientedRight, orientedBottom, orientedLeft;
+      renderer.getOrientedViewableTRBL(&orientedTop, &orientedRight, &orientedBottom, &orientedLeft);
+      const int clockWidth = renderer.getTextWidth(SMALL_FONT_ID, timeBuf);
+      const int viewableWidth = renderer.getScreenWidth() - orientedLeft - orientedRight;
+      const int clockX = orientedLeft + (viewableWidth - clockWidth) / 2;
+      renderer.drawText(SMALL_FONT_ID, clockX, orientedTop + SETTINGS.screenMargin, timeBuf);
+    }
+  }
 }
 
 void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool savePosition) {

@@ -726,6 +726,7 @@ void HomeActivity::renderFull() {
   // at that rect's y). Bold for prominence.
   GUI.drawHeader(renderer, headerRect, nullptr);
   renderer.drawCenteredText(SMALL_FONT_ID, headerRect.y + 5, tr(STR_AALU), /*black=*/true, EpdFontFamily::BOLD);
+  HomeRenderer::drawHeaderClock(renderer, headerRect);
 
   if (tiles.empty()) {
     HomeRenderer::drawHeroEmpty(renderer, heroRect());

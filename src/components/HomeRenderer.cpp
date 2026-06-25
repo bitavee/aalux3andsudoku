@@ -2,6 +2,7 @@
 
 #include <Bitmap.h>
 #include <GfxRenderer.h>
+#include <HalClock.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -13,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "CrossPointSettings.h"
 #include "RecentBooksStore.h"
 #include "components/HomeProgressCache.h"
 #include "components/UITheme.h"
@@ -385,6 +387,21 @@ void drawHeroEmpty(GfxRenderer& renderer, const Rect& rect) {
 
   const int hintY = titleY + renderer.getLineHeight(UI_12_FONT_ID) + 8;
   renderer.drawCenteredText(UI_10_FONT_ID, hintY, tr(STR_BROWSE_TO_OPEN));
+}
+
+void drawHeaderClock(GfxRenderer& renderer, const Rect& headerRect) {
+  if (SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_MODE::STATUS_BAR_CLOCK_HIDE ||
+      !halClock.isAvailable()) {
+    return;
+  }
+  char timeBuf[9];
+  if (!halClock.formatTime(timeBuf, sizeof(timeBuf), SETTINGS.clockUtcOffsetQ, SETTINGS.clockFormat == 1)) {
+    return;
+  }
+  [[maybe_unused]] int orientedTop, orientedRight, orientedBottom;
+  int orientedLeft;
+  renderer.getOrientedViewableTRBL(&orientedTop, &orientedRight, &orientedBottom, &orientedLeft);
+  renderer.drawText(SMALL_FONT_ID, orientedLeft + 12, headerRect.y + 5, timeBuf);
 }
 
 void drawSectionLabel(GfxRenderer& renderer, const Rect& rect) {

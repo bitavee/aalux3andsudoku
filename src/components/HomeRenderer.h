@@ -69,6 +69,8 @@ void drawHero(GfxRenderer& renderer, const Rect& rect, const RecentBook& book, i
 // book" message and points the user at Browse.
 void drawHeroEmpty(GfxRenderer& renderer, const Rect& rect);
 
+void drawHeaderClock(GfxRenderer& renderer, const Rect& headerRect);
+
 // Thin horizontal rule between hero and thumbnail row.
 void drawDivider(GfxRenderer& renderer, const Rect& rect);
 
