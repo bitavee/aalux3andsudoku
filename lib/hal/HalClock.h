@@ -9,7 +9,7 @@ class HalClock;
 extern HalClock halClock;  // Singleton
 
 class HalClock {
-  bool _available = false;
+  bool _hasDs3231 = false;
   mutable uint8_t _cachedHour = 0;
   mutable uint8_t _cachedMinute = 0;
   mutable bool _hasCachedTime = false;
@@ -21,11 +21,13 @@ class HalClock {
   // Call after gpio.begin() and powerManager.begin() (I2C already initialised for X3)
   void begin();
 
-  // True if the DS3231 RTC is present on this device
-  bool isAvailable() const { return _available; }
+  // True when a usable time source exists: a DS3231 RTC (X3) or a valid
+  // NTP-synced ESP32 system clock (X4, persists across deep-sleep).
+  bool isAvailable() const;
 
-  // Get current hour (0-23) and minute (0-59).
-  // Returns false if RTC is not available.
+  // Get current hour (0-23) and minute (0-59), in UTC.
+  // Reads the DS3231 when present, otherwise the ESP32 system clock.
+  // Returns false if no usable time source is available.
   bool getTime(uint8_t& hour, uint8_t& minute) const;
 
   // Format time into a caller-provided buffer.

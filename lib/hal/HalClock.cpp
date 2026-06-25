@@ -17,9 +17,14 @@ HalClock halClock;  // Singleton instance
 static uint8_t bcdToDec(uint8_t bcd) { return ((bcd >> 4) * 10) + (bcd & 0x0F); }
 static uint8_t decToBcd(uint8_t dec) { return ((dec / 10) << 4) | (dec % 10); }
 
+static bool hasValidSystemTime() {
+  constexpr time_t kMinSyncedEpoch = 1700000000;
+  return time(nullptr) > kMinSyncedEpoch;
+}
+
 void HalClock::begin() {
   if (!gpio.deviceIsX3()) {
-    _available = false;
+    _hasDs3231 = false;
     return;
   }
 
@@ -29,17 +34,17 @@ void HalClock::begin() {
   Wire.write(DS3231_SEC_REG);
   if (Wire.endTransmission(false) != 0) {
     LOG_INF("CLK", "DS3231 RTC not found");
-    _available = false;
+    _hasDs3231 = false;
     return;
   }
   Wire.requestFrom(I2C_ADDR_DS3231, (uint8_t)1);
   if (Wire.available() < 1) {
-    _available = false;
+    _hasDs3231 = false;
     return;
   }
   Wire.read();  // discard — just testing connectivity
 
-  _available = true;
+  _hasDs3231 = true;
   LOG_INF("CLK", "DS3231 RTC found");
 
   // Prime the cache with an initial read
@@ -47,8 +52,18 @@ void HalClock::begin() {
   getTime(h, m);
 }
 
+bool HalClock::isAvailable() const { return _hasDs3231 || hasValidSystemTime(); }
+
 bool HalClock::getTime(uint8_t& hour, uint8_t& minute) const {
-  if (!_available) return false;
+  if (!_hasDs3231) {
+    if (!hasValidSystemTime()) return false;
+    const time_t sysNow = time(nullptr);
+    struct tm t;
+    gmtime_r(&sysNow, &t);
+    hour = static_cast<uint8_t>(t.tm_hour);
+    minute = static_cast<uint8_t>(t.tm_min);
+    return true;
+  }
 
   const unsigned long now = millis();
   if (_lastPollMs != 0 && (now - _lastPollMs) < CLOCK_POLL_MS) {
@@ -150,8 +165,6 @@ bool HalClock::writeTimeToRTC(uint8_t hour, uint8_t minute, uint8_t second) {
 }
 
 bool HalClock::syncFromNTP() {
-  if (!_available) return false;
-
   if (WiFi.status() != WL_CONNECTED) {
     LOG_ERR("CLK", "WiFi not connected, cannot sync NTP");
     return false;
@@ -168,11 +181,11 @@ bool HalClock::syncFromNTP() {
       struct tm timeinfo;
       gmtime_r(&now, &timeinfo);
 
-      if (writeTimeToRTC(timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec)) {
-        LOG_INF("CLK", "RTC set to %02d:%02d:%02d UTC", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-        return true;
+      if (_hasDs3231 && !writeTimeToRTC(timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec)) {
+        return false;
       }
-      return false;
+      LOG_INF("CLK", "Clock synced to %02d:%02d:%02d UTC", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+      return true;
     }
     delay(100);
   }

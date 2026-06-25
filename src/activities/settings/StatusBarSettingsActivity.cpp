@@ -3,21 +3,44 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 
+#include <cstdio>
 #include <cstring>
+#include <memory>
 
+#include "ClockOffsetActivity.h"
+#include "ClockSyncActivity.h"
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
 namespace {
-constexpr int MENU_ITEMS = 6;
+constexpr int MENU_ITEMS = 10;
 const StrId menuNames[MENU_ITEMS] = {StrId::STR_CHAPTER_PAGE_COUNT,
                                      StrId::STR_BOOK_PROGRESS_PERCENTAGE,
                                      StrId::STR_PROGRESS_BAR,
                                      StrId::STR_PROGRESS_BAR_THICKNESS,
                                      StrId::STR_TITLE,
-                                     StrId::STR_BATTERY};
+                                     StrId::STR_BATTERY,
+                                     StrId::STR_CLOCK,
+                                     StrId::STR_CLOCK_FORMAT,
+                                     StrId::STR_CLOCK_UTC_OFFSET,
+                                     StrId::STR_CLOCK_SYNC};
+
+constexpr int STATUS_BAR_CLOCK_ITEMS = 3;
+const StrId statusBarClockNames[STATUS_BAR_CLOCK_ITEMS] = {StrId::STR_HIDE, StrId::STR_DIR_RIGHT, StrId::STR_DIR_LEFT};
+constexpr int CLOCK_FORMAT_ITEMS = 2;
+const StrId clockFormatNames[CLOCK_FORMAT_ITEMS] = {StrId::STR_CLOCK_FORMAT_24H, StrId::STR_CLOCK_FORMAT_12H};
+
+std::string formatUtcOffset(uint8_t biasedQ) {
+  if (biasedQ > 104) biasedQ = 48;
+  int signedQ = static_cast<int>(biasedQ) - 48;
+  const char sign = signedQ < 0 ? '-' : '+';
+  if (signedQ < 0) signedQ = -signedQ;
+  char buf[16];
+  snprintf(buf, sizeof(buf), "UTC%c%d:%02d", sign, signedQ / 4, (signedQ % 4) * 15);
+  return buf;
+}
 constexpr int PROGRESS_BAR_ITEMS = 3;
 const StrId progressBarNames[PROGRESS_BAR_ITEMS] = {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE};
 
@@ -49,6 +72,18 @@ void StatusBarSettingsActivity::onEnter() {
 
   if (SETTINGS.statusBarTitle >= TITLE_ITEMS) {
     SETTINGS.statusBarTitle = CrossPointSettings::STATUS_BAR_TITLE::HIDE_TITLE;
+  }
+
+  if (SETTINGS.statusBarClock >= STATUS_BAR_CLOCK_ITEMS) {
+    SETTINGS.statusBarClock = CrossPointSettings::STATUS_BAR_CLOCK_MODE::STATUS_BAR_CLOCK_HIDE;
+  }
+
+  if (SETTINGS.clockFormat >= CLOCK_FORMAT_ITEMS) {
+    SETTINGS.clockFormat = 0;
+  }
+
+  if (SETTINGS.clockUtcOffsetQ > 104) {
+    SETTINGS.clockUtcOffsetQ = 48;
   }
 
   requestUpdate();
@@ -110,6 +145,18 @@ void StatusBarSettingsActivity::handleSelection() {
   } else if (selectedIndex == 5) {
     // Show Battery
     SETTINGS.statusBarBattery = (SETTINGS.statusBarBattery + 1) % 2;
+  } else if (selectedIndex == 6) {
+    SETTINGS.statusBarClock = (SETTINGS.statusBarClock + 1) % STATUS_BAR_CLOCK_ITEMS;
+  } else if (selectedIndex == 7) {
+    SETTINGS.clockFormat = (SETTINGS.clockFormat + 1) % CLOCK_FORMAT_ITEMS;
+  } else if (selectedIndex == 8) {
+    startActivityForResult(std::make_unique<ClockOffsetActivity>(renderer, mappedInput),
+                           [this](const ActivityResult&) { requestUpdate(); });
+    return;
+  } else if (selectedIndex == 9) {
+    startActivityForResult(std::make_unique<ClockSyncActivity>(renderer, mappedInput),
+                           [this](const ActivityResult&) { requestUpdate(); });
+    return;
   }
   SETTINGS.saveToFile();
 }
@@ -129,7 +176,7 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
       renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(MENU_ITEMS),
       static_cast<int>(selectedIndex), [](int index) { return std::string(I18N.get(menuNames[index])); }, nullptr,
       nullptr,
-      [this](int index) {
+      [this](int index) -> std::string {
         // Draw status for each setting
         if (index == 0) {
           return SETTINGS.statusBarChapterPageCount ? tr(STR_SHOW) : tr(STR_HIDE);
@@ -143,6 +190,15 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
           return I18N.get(titleNames[SETTINGS.statusBarTitle]);
         } else if (index == 5) {
           return SETTINGS.statusBarBattery ? tr(STR_SHOW) : tr(STR_HIDE);
+        } else if (index == 6) {
+          return I18N.get(
+              statusBarClockNames[SETTINGS.statusBarClock < STATUS_BAR_CLOCK_ITEMS ? SETTINGS.statusBarClock : 0]);
+        } else if (index == 7) {
+          return I18N.get(clockFormatNames[SETTINGS.clockFormat < CLOCK_FORMAT_ITEMS ? SETTINGS.clockFormat : 0]);
+        } else if (index == 8) {
+          return formatUtcOffset(SETTINGS.clockUtcOffsetQ);
+        } else if (index == 9) {
+          return SETTINGS.clockHasBeenSynced ? tr(STR_CLOCK_SYNCED) : tr(STR_NOT_SET);
         } else {
           return tr(STR_HIDE);
         }

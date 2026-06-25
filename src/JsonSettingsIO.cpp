@@ -131,6 +131,8 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
 
   doc["sdFontFamilyName"] = s.sdFontFamilyName;
 
+  doc["clockHasBeenSynced"] = s.clockHasBeenSynced;
+
   String json;
   serializeJson(doc, json);
   return Storage.writeFile(path, json);
@@ -229,6 +231,8 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
   const char* sdfn = doc["sdFontFamilyName"] | "";
   strncpy(s.sdFontFamilyName, sdfn, sizeof(s.sdFontFamilyName) - 1);
   s.sdFontFamilyName[sizeof(s.sdFontFamilyName) - 1] = '\0';
+
+  s.clockHasBeenSynced = clamp(doc["clockHasBeenSynced"] | (uint8_t)0, (uint8_t)2, (uint8_t)0);
 
   LOG_DBG("CPS", "Settings loaded from file");
 
