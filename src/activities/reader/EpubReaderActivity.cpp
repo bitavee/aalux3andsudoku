@@ -1104,7 +1104,7 @@ void EpubReaderActivity::renderStatusBar() const {
       const int clockWidth = renderer.getTextWidth(SMALL_FONT_ID, timeBuf);
       const int viewableWidth = renderer.getScreenWidth() - orientedLeft - orientedRight;
       const int clockX = orientedLeft + (viewableWidth - clockWidth) / 2;
-      renderer.drawText(SMALL_FONT_ID, clockX, orientedTop + SETTINGS.screenMargin, timeBuf);
+      renderer.drawText(SMALL_FONT_ID, clockX, orientedTop + 4, timeBuf);
     }
   }
 }
