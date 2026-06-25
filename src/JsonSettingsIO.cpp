@@ -150,7 +150,7 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
   // --- BEGIN FONT SIZE MIGRATION ---
   // If the font size hasn't been migrated to include EXTRA_SMALL (which shifted all enum values by +1)
   if (doc["fontSizeMigrated"].isNull()) {
-    if (doc.containsKey("fontSize")) {
+    if (!doc["fontSize"].isNull()) {
       uint8_t oldSize = doc["fontSize"];
       doc["fontSize"] = oldSize + 1;  // Shift the old value up to match the new enum mapping
       doc["fontSizeMigrated"] = true;
