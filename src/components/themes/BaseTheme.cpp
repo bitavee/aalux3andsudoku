@@ -830,18 +830,12 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     char timeBuf[9];
     if (halClock.formatTime(timeBuf, sizeof(timeBuf), SETTINGS.clockUtcOffsetQ, SETTINGS.clockFormat == 1)) {
       const int clockTextWidth = renderer.getTextWidth(SMALL_FONT_ID, timeBuf);
-      constexpr int clockGap = 10;
-      if (SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_MODE::STATUS_BAR_CLOCK_LEFT) {
-        const int clockX =
-            metrics.statusBarHorizontalMargin + orientedMarginLeft + 1 + batterySize + (batterySize > 0 ? clockGap : 0);
-        renderer.drawText(SMALL_FONT_ID, clockX, textY, timeBuf);
-        clockLeftExtra = clockTextWidth + (batterySize > 0 ? clockGap : 0) + clockGap;
-      } else {
-        const int clockX = renderer.getScreenWidth() - metrics.statusBarHorizontalMargin - orientedMarginRight -
-                           progressTextWidth - (progressTextWidth > 0 ? clockGap : 0) - clockTextWidth;
-        renderer.drawText(SMALL_FONT_ID, clockX, textY, timeBuf);
-        clockRightExtra = clockTextWidth + (progressTextWidth > 0 ? clockGap : 0) + clockGap;
-      }
+      const int clockRenderableWidth = renderer.getScreenWidth() - (metrics.statusBarHorizontalMargin * 2) -
+                                       orientedMarginLeft - orientedMarginRight;
+      const int clockX =
+          metrics.statusBarHorizontalMargin + orientedMarginLeft + (clockRenderableWidth - clockTextWidth) / 2;
+      renderer.drawText(SMALL_FONT_ID, clockX, textY, timeBuf);
+      title.clear();
     }
   }
 
