@@ -63,8 +63,8 @@ void drawBackStack(GfxRenderer& renderer, int x, int y, int width, int height, i
     const int dy = -4 * g;
     const int gx = x + dx;
     const int gy = y + dy;
-    renderer.fillRect(gx, gy, width, height, /*black=*/false);
-    renderer.drawRect(gx, gy, width, height);
+    renderer.fillRoundedRect(gx, gy, width, height, HomeRenderer::kCoverCornerRadius, Color::White);
+    renderer.drawRoundedRect(gx, gy, width, height, 1, HomeRenderer::kCoverCornerRadius, true);
   }
 }
 
@@ -116,21 +116,21 @@ void drawRoundCountBadge(const GfxRenderer& renderer, int coverX, int coverY, in
 // ratio doesn't match the home layout's 2:3 thumbnail boxes.
 bool drawCover(GfxRenderer& renderer, int x, int y, int width, int height, const RecentBook& book, int targetHeight) {
   if (book.coverBmpPath.empty()) {
-    renderer.drawRect(x, y, width, height);
+    renderer.roundCoverCorners(x, y, width, height, HomeRenderer::kCoverCornerRadius);
     return false;
   }
 
   const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, targetHeight);
   FsFile file;
   if (!Storage.openFileForRead("HOME", thumbPath, file)) {
-    renderer.drawRect(x, y, width, height);
+    renderer.roundCoverCorners(x, y, width, height, HomeRenderer::kCoverCornerRadius);
     return false;
   }
 
   Bitmap bitmap(file);
   if (bitmap.parseHeaders() != BmpReaderError::Ok) {
     file.close();
-    renderer.drawRect(x, y, width, height);
+    renderer.roundCoverCorners(x, y, width, height, HomeRenderer::kCoverCornerRadius);
     return false;
   }
 
@@ -139,7 +139,7 @@ bool drawCover(GfxRenderer& renderer, int x, int y, int width, int height, const
   } else {
     renderer.drawBitmap(bitmap, x, y, width, height);
   }
-  renderer.drawRect(x, y, width, height);
+  renderer.roundCoverCorners(x, y, width, height, HomeRenderer::kCoverCornerRadius);
   file.close();
   return true;
 }
@@ -587,9 +587,8 @@ void drawStackedCover(GfxRenderer& renderer, int x, int y, int width, int height
   // Bookshelf cover paint. Mirrors drawCover's logic but takes the thumb
   // path directly (the bookshelf doesn't carry coverBmpPath on its slim
   // entries -- the path is derived from the EPUB/XTC hash at tile build
-  // time). When the thumb file is missing or unreadable, draw an empty rect
+  // time). When the thumb file is missing or unreadable, draw an empty rounded
   // placeholder -- the title underneath identifies the book either way.
-  bool covered = false;
   if (!thumbPath.empty()) {
     FsFile file;
     if (Storage.openFileForRead("BSH", thumbPath, file)) {
@@ -600,16 +599,11 @@ void drawStackedCover(GfxRenderer& renderer, int x, int y, int width, int height
         } else {
           renderer.drawBitmap(bitmap, x, y, width, height);
         }
-        covered = true;
       }
       file.close();
     }
   }
-  if (!covered) {
-    renderer.drawRect(x, y, width, height);
-  } else {
-    renderer.drawRect(x, y, width, height);
-  }
+  renderer.roundCoverCorners(x, y, width, height, kCoverCornerRadius);
 
   if (stackSize > 1) {
     char countBuf[8];
@@ -658,9 +652,12 @@ void drawBottomButtonHints(GfxRenderer& renderer, const Rect& rect) {
 void drawSelectionBorder(GfxRenderer& renderer, const Rect& inner, bool rTL, bool rTR, bool rBL, bool rBR) {
   const bool anyRounded = rTL || rTR || rBL || rBR;
   if (!anyRounded) {
-    // Cheap path for cover/thumbnail focus - those are rectangular.
-    renderer.drawRect(inner.x - 2, inner.y - 2, inner.width + 4, inner.height + 4);
-    renderer.drawRect(inner.x - 3, inner.y - 3, inner.width + 6, inner.height + 6);
+    // Cover/thumbnail focus: covers are rounded on all corners, so the
+    // selection outline follows with a concentric rounded border.
+    renderer.drawRoundedRect(inner.x - 2, inner.y - 2, inner.width + 4, inner.height + 4, 1, kCoverCornerRadius + 2,
+                             true);
+    renderer.drawRoundedRect(inner.x - 3, inner.y - 3, inner.width + 6, inner.height + 6, 1, kCoverCornerRadius + 3,
+                             true);
     return;
   }
 

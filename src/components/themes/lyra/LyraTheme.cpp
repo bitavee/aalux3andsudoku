@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "RecentBooksStore.h"
+#include "components/HomeRenderer.h"
 #include "components/UITheme.h"
 #include "components/icons/book.h"
 #include "components/icons/book24.h"
@@ -452,8 +453,8 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
       }
 
       // Draw either way
-      renderer.drawRect(tileX + hPaddingInSelection, tileY + hPaddingInSelection, coverWidth,
-                        LyraMetrics::values.homeCoverHeight, true);
+      renderer.roundCoverCorners(tileX + hPaddingInSelection, tileY + hPaddingInSelection, coverWidth,
+                                 LyraMetrics::values.homeCoverHeight, HomeRenderer::kCoverCornerRadius);
 
       if (!hasCover) {
         // Render empty cover

@@ -469,7 +469,7 @@ void StatsActivity::drawCoverPlaceholder(int x, int y, int w, int h, const char*
   // Empty bordered rect - matches the home screen's behaviour for books with
   // no embedded cover image. The book title is already visible to the right
   // of the cover in the row layout, so we don't paint it inside the box.
-  renderer.drawRoundedRect(x, y, w, h, 1, 4, false);
+  renderer.drawRoundedRect(x, y, w, h, 1, HomeRenderer::kCoverCornerRadius, false);
 }
 
 /**
@@ -508,7 +508,7 @@ bool StatsActivity::loadAndDrawCover(int x, int y, int w, int h, const BookStatE
   } else {
     renderer.drawBitmap(bmp, x, y, w, h);
   }
-  renderer.drawRect(x, y, w, h);
+  renderer.roundCoverCorners(x, y, w, h, HomeRenderer::kCoverCornerRadius);
 
   f.close();
   return true;

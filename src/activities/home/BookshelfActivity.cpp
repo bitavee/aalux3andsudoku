@@ -557,8 +557,10 @@ void BookshelfActivity::drawFocusBorder() const {
   const int cellY = gridTop + (row - scrollRow) * rowStride();
   const int coverX = cellX + (kCellW - kCoverW) / 2;
   const int coverY = cellY + kCoverPadTop;
-  renderer.drawRect(coverX - 2, coverY - 2, kCoverW + 4, kCoverH + 4);
-  renderer.drawRect(coverX - 3, coverY - 3, kCoverW + 6, kCoverH + 6);
+  renderer.drawRoundedRect(coverX - 2, coverY - 2, kCoverW + 4, kCoverH + 4, 1, HomeRenderer::kCoverCornerRadius + 2,
+                           true);
+  renderer.drawRoundedRect(coverX - 3, coverY - 3, kCoverW + 6, kCoverH + 6, 1, HomeRenderer::kCoverCornerRadius + 3,
+                           true);
 }
 
 void BookshelfActivity::showFirstTimeTooltip() {

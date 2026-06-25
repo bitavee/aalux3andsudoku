@@ -42,6 +42,8 @@ constexpr int kButtonHintsHeight = 30;
 constexpr int kHeroCoverHeight = 300;
 constexpr int kThumbnailCoverHeight = 210;
 
+constexpr int kCoverCornerRadius = 6;
+
 // Each row draw fn renders only the *unselected* state so that the activity
 // can store the framebuffer once, then on every focus change just restore the
 // buffer and overlay a selection border. This keeps navigation snappy on

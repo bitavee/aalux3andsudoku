@@ -68,19 +68,19 @@ BookStatus statusForBook(const RecentBook& book) {
 
 void drawTileCover(GfxRenderer& renderer, int x, int y, const RecentBook& book) {
   if (book.coverBmpPath.empty()) {
-    renderer.drawRect(x, y, kCoverW, kCoverH);
+    renderer.roundCoverCorners(x, y, kCoverW, kCoverH, HomeRenderer::kCoverCornerRadius);
     return;
   }
   const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, HomeRenderer::kThumbnailCoverHeight);
   FsFile file;
   if (!Storage.openFileForRead("SVW", thumbPath, file)) {
-    renderer.drawRect(x, y, kCoverW, kCoverH);
+    renderer.roundCoverCorners(x, y, kCoverW, kCoverH, HomeRenderer::kCoverCornerRadius);
     return;
   }
   Bitmap bitmap(file);
   if (bitmap.parseHeaders() != BmpReaderError::Ok) {
     file.close();
-    renderer.drawRect(x, y, kCoverW, kCoverH);
+    renderer.roundCoverCorners(x, y, kCoverW, kCoverH, HomeRenderer::kCoverCornerRadius);
     return;
   }
   if (bitmap.is1Bit()) {
@@ -88,7 +88,7 @@ void drawTileCover(GfxRenderer& renderer, int x, int y, const RecentBook& book) 
   } else {
     renderer.drawBitmap(bitmap, x, y, kCoverW, kCoverH);
   }
-  renderer.drawRect(x, y, kCoverW, kCoverH);
+  renderer.roundCoverCorners(x, y, kCoverW, kCoverH, HomeRenderer::kCoverCornerRadius);
   file.close();
 }
 
@@ -614,9 +614,11 @@ void SeriesViewerActivity::drawFocusBorder() const {
   const int cellY = gridTop + (row - scrollRow) * rowStride();
   const int coverX = cellX + (kCellW - kCoverW) / 2;
   const int coverY = cellY + kCoverPadTop;
-  // Square selection border around the cover, matching the home screen.
-  renderer.drawRect(coverX - 2, coverY - 2, kCoverW + 4, kCoverH + 4);
-  renderer.drawRect(coverX - 3, coverY - 3, kCoverW + 6, kCoverH + 6);
+  // Rounded selection border around the cover, matching the home screen.
+  renderer.drawRoundedRect(coverX - 2, coverY - 2, kCoverW + 4, kCoverH + 4, 1, HomeRenderer::kCoverCornerRadius + 2,
+                           true);
+  renderer.drawRoundedRect(coverX - 3, coverY - 3, kCoverW + 6, kCoverH + 6, 1, HomeRenderer::kCoverCornerRadius + 3,
+                           true);
 }
 
 bool SeriesViewerActivity::storeCoverBuffer() {

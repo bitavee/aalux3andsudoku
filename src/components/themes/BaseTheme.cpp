@@ -11,6 +11,7 @@
 
 #include "I18n.h"
 #include "RecentBooksStore.h"
+#include "components/HomeRenderer.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -545,8 +546,8 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
           // Draw the cover image (bookWidth and bookHeight already match image aspect ratio)
           renderer.drawBitmap(bitmap, bookX, bookY, bookWidth, bookHeight);
 
-          // Draw border around the card
-          renderer.drawRect(bookX, bookY, bookWidth, bookHeight);
+          // Draw rounded border around the card
+          renderer.roundCoverCorners(bookX, bookY, bookWidth, bookHeight, HomeRenderer::kCoverCornerRadius);
 
           // No bookmark ribbon when cover is shown - it would just cover the art
 
@@ -557,8 +558,10 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
           // First render: if selected, draw selection indicators now
           if (bookSelected) {
             LOG_DBG("THEME", "Drawing selection");
-            renderer.drawRect(bookX + 1, bookY + 1, bookWidth - 2, bookHeight - 2);
-            renderer.drawRect(bookX + 2, bookY + 2, bookWidth - 4, bookHeight - 4);
+            renderer.drawRoundedRect(bookX + 1, bookY + 1, bookWidth - 2, bookHeight - 2, 1,
+                                     HomeRenderer::kCoverCornerRadius - 1, true);
+            renderer.drawRoundedRect(bookX + 2, bookY + 2, bookWidth - 4, bookHeight - 4, 1,
+                                     HomeRenderer::kCoverCornerRadius - 2, true);
           }
         }
         file.close();
@@ -568,9 +571,9 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
     if (!bufferRestored && !coverRendered) {
       // No cover image: draw border or fill, plus bookmark as visual flair
       if (bookSelected) {
-        renderer.fillRect(bookX, bookY, bookWidth, bookHeight);
+        renderer.fillRoundedRect(bookX, bookY, bookWidth, bookHeight, HomeRenderer::kCoverCornerRadius, Color::Black);
       } else {
-        renderer.drawRect(bookX, bookY, bookWidth, bookHeight);
+        renderer.roundCoverCorners(bookX, bookY, bookWidth, bookHeight, HomeRenderer::kCoverCornerRadius);
       }
 
       // Draw bookmark ribbon when no cover image (visual decoration)

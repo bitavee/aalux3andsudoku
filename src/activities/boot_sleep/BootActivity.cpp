@@ -71,19 +71,19 @@ const BookStatEntry* findStatsByPath(const std::string& bookPath) {
 // the thumb cannot be decoded -- the resume card is still useful without art.
 void drawCover(GfxRenderer& renderer, int x, int y, int w, int h, const RecentBook& book) {
   if (book.coverBmpPath.empty()) {
-    renderer.drawRect(x, y, w, h);
+    renderer.roundCoverCorners(x, y, w, h, HomeRenderer::kCoverCornerRadius);
     return;
   }
   const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, kBootCoverThumbHeight);
   FsFile file;
   if (!Storage.openFileForRead("BOOT", thumbPath, file)) {
-    renderer.drawRect(x, y, w, h);
+    renderer.roundCoverCorners(x, y, w, h, HomeRenderer::kCoverCornerRadius);
     return;
   }
   Bitmap bitmap(file);
   if (bitmap.parseHeaders() != BmpReaderError::Ok) {
     file.close();
-    renderer.drawRect(x, y, w, h);
+    renderer.roundCoverCorners(x, y, w, h, HomeRenderer::kCoverCornerRadius);
     return;
   }
   if (bitmap.is1Bit()) {
@@ -91,7 +91,7 @@ void drawCover(GfxRenderer& renderer, int x, int y, int w, int h, const RecentBo
   } else {
     renderer.drawBitmap(bitmap, x, y, w, h);
   }
-  renderer.drawRect(x, y, w, h);
+  renderer.roundCoverCorners(x, y, w, h, HomeRenderer::kCoverCornerRadius);
   file.close();
 }
 

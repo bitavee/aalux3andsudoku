@@ -77,7 +77,7 @@ void DetailedStatsActivity::renderDetailedGrid() const {
       } else {
         renderer.drawBitmap(bmp, coverX, coverY, coverW, coverH);
       }
-      renderer.drawRect(coverX, coverY, coverW, coverH);
+      renderer.roundCoverCorners(coverX, coverY, coverW, coverH, HomeRenderer::kCoverCornerRadius);
       drewCover = true;
     }
     f.close();
@@ -227,13 +227,13 @@ void DetailedStatsActivity::drawCoverPlaceholder(int x, int y, int w, int h, con
     if (Storage.openFileForRead("STATS", PLACEHOLDER_PATH, f)) {
       Bitmap bmp(f, false);
       if (bmp.parseHeaders() == BmpReaderError::Ok) {
-        renderer.drawRect(x, y, w, h, 2, true);
         renderer.drawBitmap(bmp, x + 2, y + 2, w - 4, h - 4);
+        renderer.roundCoverCorners(x, y, w, h, HomeRenderer::kCoverCornerRadius);
         f.close();
         return;
       }
       f.close();
     }
   }
-  renderer.drawRoundedRect(x, y, w, h, 1, 4, true);
+  renderer.drawRoundedRect(x, y, w, h, 1, HomeRenderer::kCoverCornerRadius, true);
 }

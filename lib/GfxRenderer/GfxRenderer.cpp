@@ -503,6 +503,58 @@ void GfxRenderer::fillArc(const int maxRadius, const int cx, const int cy, const
   }
 }
 
+void GfxRenderer::roundCoverCorners(const int x, const int y, const int width, const int height, const int cornerRadius,
+                                    const Color background) const {
+  if (width <= 0 || height <= 0) {
+    return;
+  }
+  const int r = std::min({cornerRadius, width / 2, height / 2});
+  if (r > 0) {
+    const int rSq = r * r;
+    const int leftCx = x + r;
+    const int topCy = y + r;
+    const int rightCx = x + width - 1 - r;
+    const int bottomCy = y + height - 1 - r;
+    for (int dy = 0; dy <= r; ++dy) {
+      for (int dx = 0; dx <= r; ++dx) {
+        if (dx * dx + dy * dy <= rSq) {
+          continue;
+        }
+        switch (background) {
+          case Black:
+            drawPixel(leftCx - dx, topCy - dy, true);
+            drawPixel(rightCx + dx, topCy - dy, true);
+            drawPixel(leftCx - dx, bottomCy + dy, true);
+            drawPixel(rightCx + dx, bottomCy + dy, true);
+            break;
+          case LightGray:
+            drawPixelDither<LightGray>(leftCx - dx, topCy - dy);
+            drawPixelDither<LightGray>(rightCx + dx, topCy - dy);
+            drawPixelDither<LightGray>(leftCx - dx, bottomCy + dy);
+            drawPixelDither<LightGray>(rightCx + dx, bottomCy + dy);
+            break;
+          case DarkGray:
+            drawPixelDither<DarkGray>(leftCx - dx, topCy - dy);
+            drawPixelDither<DarkGray>(rightCx + dx, topCy - dy);
+            drawPixelDither<DarkGray>(leftCx - dx, bottomCy + dy);
+            drawPixelDither<DarkGray>(rightCx + dx, bottomCy + dy);
+            break;
+          case Clear:
+            break;
+          case White:
+          default:
+            drawPixel(leftCx - dx, topCy - dy, false);
+            drawPixel(rightCx + dx, topCy - dy, false);
+            drawPixel(leftCx - dx, bottomCy + dy, false);
+            drawPixel(rightCx + dx, bottomCy + dy, false);
+            break;
+        }
+      }
+    }
+  }
+  drawRoundedRect(x, y, width, height, 1, cornerRadius, true);
+}
+
 void GfxRenderer::fillRoundedRect(const int x, const int y, const int width, const int height, const int cornerRadius,
                                   const Color color) const {
   fillRoundedRect(x, y, width, height, cornerRadius, true, true, true, true, color);
