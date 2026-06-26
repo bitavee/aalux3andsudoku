@@ -1462,7 +1462,7 @@ void EpubReaderActivity::renderQuickSettingsOverlay() {
   const int tabTop = sheetTop + grabberZone;
   std::vector<TabInfo> tabs = {{tr(STR_CAT_READER), qsSelectedTab == 0}, {tr(STR_CAT_CONTROLS), qsSelectedTab == 1}};
   GUI.drawTabBar(renderer, Rect{sheetX, tabTop, sheetW, metrics.tabBarHeight}, tabs,
-                 qsState == QuickSettingsState::TAB_FOCUSED, true);
+                 qsState == QuickSettingsState::TAB_FOCUSED, false);
 
   const int listTop = tabTop + metrics.tabBarHeight + metrics.verticalSpacing;
   const int listHeight = h - gutter.bottom - listTop;
@@ -1477,7 +1477,7 @@ void EpubReaderActivity::renderQuickSettingsOverlay() {
         char buf[40];
         return std::string(getQsItemValue(tab, index, buf, sizeof(buf)));
       },
-      true, nullptr, [this, tab](int index) { return getQsItemToggle(tab, index); }, nullptr, true);
+      true, nullptr, [this, tab](int index) { return getQsItemToggle(tab, index); }, nullptr, false);
 
   GUI.drawButtonHintsGlyphs(renderer);
 }

@@ -225,24 +225,23 @@ void LyraTheme::drawTabBar(const GfxRenderer& renderer, Rect rect, const std::ve
                            bool solidSelection) const {
   int currentX = rect.x + LyraMetrics::values.contentSidePadding;
 
-  if (selected && !solidSelection) {
-    renderer.fillRectDither(rect.x, rect.y, rect.width, rect.height, Color::LightGray);
-  }
-
   for (const auto& tab : tabs) {
     const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, tab.label, EpdFontFamily::REGULAR);
     const int pillWidth = textWidth + 2 * hPaddingInSelection;
 
     bool invertLabel = false;
     if (tab.selected) {
-      if (selected) {
-        renderer.fillRoundedRect(currentX, rect.y + 1, pillWidth, rect.height - 4, cornerRadius, Color::Black);
-        invertLabel = true;
-      } else if (solidSelection) {
-        renderer.drawLine(currentX, rect.y + rect.height - 3, currentX + pillWidth, rect.y + rect.height - 3, 2, true);
+      if (solidSelection) {
+        if (selected) {
+          renderer.fillRoundedRect(currentX, rect.y + 1, pillWidth, rect.height - 4, cornerRadius, Color::Black);
+          invertLabel = true;
+        } else {
+          renderer.drawLine(currentX, rect.y + rect.height - 3, currentX + pillWidth, rect.y + rect.height - 3, 2,
+                            true);
+        }
       } else {
-        renderer.fillRectDither(currentX, rect.y, pillWidth, rect.height - 3, Color::LightGray);
-        renderer.drawLine(currentX, rect.y + rect.height - 3, currentX + pillWidth, rect.y + rect.height - 3, 2, true);
+        renderer.drawRoundedRect(currentX, rect.y + 1, pillWidth, rect.height - 4, selected ? 2 : 1, cornerRadius,
+                                 true);
       }
     }
 
@@ -339,9 +338,13 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
       selTop += rowFullHeight(i);
     }
     const int selOffset = startsSection(selectedIndex) ? sectionLabelHeight : 0;
-    renderer.fillRoundedRect(rect.x + LyraMetrics::values.contentSidePadding, selTop + selOffset,
-                             contentWidth - LyraMetrics::values.contentSidePadding * 2, rowHeight, cornerRadius,
-                             solidSelection ? Color::Black : Color::LightGray);
+    const int selX = rect.x + LyraMetrics::values.contentSidePadding;
+    const int selW = contentWidth - LyraMetrics::values.contentSidePadding * 2;
+    if (solidSelection) {
+      renderer.fillRoundedRect(selX, selTop + selOffset, selW, rowHeight, cornerRadius, Color::Black);
+    } else {
+      renderer.drawRoundedRect(selX, selTop + selOffset, selW, rowHeight, 2, cornerRadius, true);
+    }
   }
 
   // Draw all items
@@ -404,22 +407,18 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
       drawToggleSwitch(renderer, Rect{rect.x, itemY, rightEdge - hPaddingInSelection - rect.x, rowContentHeight},
                        toggleState == ListToggleState::On, inverted);
     } else if (isAction) {
-      const int chevronWidth = renderer.getTextWidth(UI_10_FONT_ID, listChevronRight);
-      renderer.drawText(UI_10_FONT_ID, rightEdge - chevronWidth, itemY + 6, listChevronRight, !inverted);
+      const int chevronWidth = renderer.getTextWidth(UI_12_FONT_ID, listChevronRight);
+      const int chevronY = itemY + (rowContentHeight - renderer.getLineHeight(UI_12_FONT_ID)) / 2;
+      renderer.drawText(UI_12_FONT_ID, rightEdge - hPaddingInSelection - chevronWidth, chevronY, listChevronRight,
+                        !inverted);
     } else if (!valueText.empty()) {
       const bool focusedValue = (i == selectedIndex && highlightValue);
       if (focusedValue) {
         char steppedValue[80];
         snprintf(steppedValue, sizeof(steppedValue), "%s %s %s", listChevronLeft, valueText.c_str(), listChevronRight);
         const int steppedWidth = renderer.getTextWidth(UI_10_FONT_ID, steppedValue);
-        if (inverted) {
-          renderer.drawText(UI_10_FONT_ID, rightEdge - steppedWidth, itemY + 6, steppedValue, false);
-        } else {
-          const int pillWidth = steppedWidth + hPaddingInSelection * 2;
-          const int pillX = rightEdge - pillWidth;
-          renderer.fillRoundedRect(pillX, itemY, pillWidth, rowContentHeight, cornerRadius, Color::Black);
-          renderer.drawText(UI_10_FONT_ID, pillX + hPaddingInSelection, itemY + 6, steppedValue, false);
-        }
+        renderer.drawText(UI_10_FONT_ID, rightEdge - hPaddingInSelection - steppedWidth, itemY + 6, steppedValue,
+                          !inverted);
       } else {
         renderer.drawText(UI_10_FONT_ID, rightEdge - valueWidth, itemY + 6, valueText.c_str(), !inverted);
       }
