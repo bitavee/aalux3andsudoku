@@ -408,19 +408,19 @@ rm -rf /path/to/sd/.crosspoint/epub_<hash>/sections/  # keep progress, drop sect
 
 ## Git Workflow
 
-AALU is typically a fork — `origin` = your fork, `upstream` = AALU. Always verify:
+**ALWAYS work and commit directly on `master` for this repo — never create feature branches.** Commit straight to `master` and push to `origin master`. This is a hard rule and overrides the global "branch first when on the default branch" default: do not create branches and do not open PRs unless explicitly asked.
+
+`origin` = your fork (`dawsonfi/aalu`), `upstream` = CrossPoint. Verify before committing:
 ```bash
-git branch --show-current
+git branch --show-current   # expect: master
 git remote -v
 git status --short
 ```
 
 Rules:
-1. No assumed branch names: `git push origin $(git branch --show-current)`.
-2. No assumed remote permissions: forked → push to `origin`, PR to `upstream`. Ask when unsure.
+1. Commit and push on `master`: `git push origin master`.
+2. Push to `origin` (your fork); open a PR to `upstream` only when explicitly asked.
 3. Sync before work: `git fetch upstream && git merge upstream/main`.
-
-Branch naming: `feature/<desc>`, `fix/<issue>-<desc>`, `refactor/<component>`, `docs/<topic>`.
 
 Commit format: `<type>: <50-char summary>` + optional body. Types: `feat fix refactor docs test chore perf`.
 
