@@ -782,7 +782,8 @@ void HomeActivity::render(RenderLock&&) {
     // FAST_REFRESH for selection-border moves — incremental update, no black flash. HALF mode
     // does a full clear-then-redraw cycle that flashes the panel black; FAST mode only writes
     // changed pixels (~50-100ms). Mild ghosting on the selection rectangle is acceptable for
-    // arrow-key navigation. First render + re-entry from a sub-activity use FULL_REFRESH.
+    // arrow-key navigation. First render + re-entry from a sub-activity use the same FAST_REFRESH
+    // as the other screens (settings, stats) — no black flash on home entry.
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
     return;
   }
@@ -806,5 +807,5 @@ void HomeActivity::render(RenderLock&&) {
   // render-perf optimization for the *next* frame; the overlay itself must
   // show on this frame either way.
   drawFocus();
-  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
