@@ -123,25 +123,35 @@ class BaseTheme {
     // reading/finished toggle. Up/down are repurposed in StatsActivity so the
     // arrow glyphs would be misleading there.
     StatsActions,
-    // Settings: back-arrow, disc (confirm), stacked up/down arrows, side-by-side
-    // left/right arrows. Left/Right step the focused value or switch tabs.
-    SettingsNav,
   };
   virtual void drawButtonHintsGlyphs(GfxRenderer& renderer,
                                      ButtonHintGlyphSet variant = ButtonHintGlyphSet::Navigation) const;
   virtual void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const;
+  // Per-row toggle state reported by drawList's rowToggle callback.
+  enum class ListToggleState {
+    // The row is not a toggle; draw its value/chevron as usual.
+    NotToggle,
+    // The row is a toggle currently in the off state.
+    Off,
+    // The row is a toggle currently in the on state.
+    On,
+  };
   virtual void drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,
                         const std::function<std::string(int index)>& rowTitle,
                         const std::function<std::string(int index)>& rowSubtitle = nullptr,
                         const std::function<UIIcon(int index)>& rowIcon = nullptr,
-                        const std::function<std::string(int index)>& rowValue = nullptr,
-                        bool highlightValue = false) const;
+                        const std::function<std::string(int index)>& rowValue = nullptr, bool highlightValue = false,
+                        const std::function<std::string(int index)>& rowSection = nullptr,
+                        const std::function<ListToggleState(int index)>& rowToggle = nullptr,
+                        const std::function<bool(int index)>& rowAction = nullptr, bool solidSelection = false) const;
+  virtual void drawToggleSwitch(const GfxRenderer& renderer, Rect rect, bool on, bool inverted = false) const;
+  virtual void drawBottomSheetFrame(const GfxRenderer& renderer, Rect rect) const;
   virtual void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
                           const char* subtitle = nullptr) const;
   virtual void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,
                              const char* rightLabel = nullptr) const;
-  virtual void drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,
-                          bool selected) const;
+  virtual void drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs, bool selected,
+                          bool solidSelection = false) const;
   virtual void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                    const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
                                    bool& bufferRestored, std::function<bool()> storeCoverBuffer) const;

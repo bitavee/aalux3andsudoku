@@ -49,12 +49,18 @@ void SettingsActivity::onEnter() {
   // Append device-only ACTION items
   controlsSettings.insert(controlsSettings.begin(),
                           SettingInfo::Action(StrId::STR_REMAP_FRONT_BUTTONS, SettingAction::RemapFrontButtons));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_FILE_TRANSFER, SettingAction::FileTransfer));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_BROWSER, SettingAction::OPDSBrowser));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
+  systemSettings.push_back(
+      SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network).inSection(StrId::STR_SECT_TOOLS));
+  systemSettings.push_back(
+      SettingInfo::Action(StrId::STR_FILE_TRANSFER, SettingAction::FileTransfer).inSection(StrId::STR_SECT_TOOLS));
+  systemSettings.push_back(
+      SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync).inSection(StrId::STR_SECT_TOOLS));
+  systemSettings.push_back(
+      SettingInfo::Action(StrId::STR_OPDS_BROWSER, SettingAction::OPDSBrowser).inSection(StrId::STR_SECT_TOOLS));
+  systemSettings.push_back(
+      SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache).inSection(StrId::STR_SECT_TOOLS));
+  systemSettings.push_back(
+      SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates).inSection(StrId::STR_SECT_TOOLS));
   // Language selector removed in 1.2.0 — firmware ships English-only. The LanguageSelectActivity
   // class is left in place for now in case multi-lang support returns; the dead-code-elimination
   // pass removes it from the binary since no reachable code references it.
@@ -297,10 +303,7 @@ void SettingsActivity::render(RenderLock&&) {
       [&settings](int i) {
         const auto& setting = settings[i];
         std::string valueText = "";
-        if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
-          const bool value = SETTINGS.*(setting.valuePtr);
-          valueText = value ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
-        } else if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
+        if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
           const uint8_t value = SETTINGS.*(setting.valuePtr);
           valueText = I18N.get(setting.enumValues[value]);
         } else if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
@@ -308,9 +311,21 @@ void SettingsActivity::render(RenderLock&&) {
         }
         return valueText;
       },
-      true);
+      true,
+      [&settings](int i) {
+        const StrId section = settings[i].section;
+        return section == StrId::STR_NONE_OPT ? std::string() : std::string(I18N.get(section));
+      },
+      [&settings](int i) {
+        const auto& setting = settings[i];
+        if (setting.type != SettingType::TOGGLE || setting.valuePtr == nullptr) {
+          return BaseTheme::ListToggleState::NotToggle;
+        }
+        return (SETTINGS.*(setting.valuePtr)) ? BaseTheme::ListToggleState::On : BaseTheme::ListToggleState::Off;
+      },
+      [&settings](int i) { return settings[i].type == SettingType::ACTION; });
 
-  GUI.drawButtonHintsGlyphs(renderer, BaseTheme::ButtonHintGlyphSet::SettingsNav);
+  GUI.drawButtonHintsGlyphs(renderer, BaseTheme::ButtonHintGlyphSet::Navigation);
 
   // Always use standard refresh for settings screen
   renderer.displayBuffer();

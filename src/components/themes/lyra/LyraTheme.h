@@ -47,13 +47,17 @@ class LyraTheme : public BaseTheme {
   void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle) const override;
   void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,
                      const char* rightLabel = nullptr) const override;
-  void drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,
-                  bool selected) const override;
+  void drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs, bool selected,
+                  bool solidSelection = false) const override;
   void drawList(const GfxRenderer& renderer, Rect rect, int itemCount, int selectedIndex,
                 const std::function<std::string(int index)>& rowTitle,
                 const std::function<std::string(int index)>& rowSubtitle,
                 const std::function<UIIcon(int index)>& rowIcon, const std::function<std::string(int index)>& rowValue,
-                bool highlightValue) const override;
+                bool highlightValue, const std::function<std::string(int index)>& rowSection,
+                const std::function<ListToggleState(int index)>& rowToggle,
+                const std::function<bool(int index)>& rowAction, bool solidSelection) const override;
+  void drawToggleSwitch(const GfxRenderer& renderer, Rect rect, bool on, bool inverted = false) const override;
+  void drawBottomSheetFrame(const GfxRenderer& renderer, Rect rect) const override;
   void drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                        const char* btn4) const override;
   void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const override;

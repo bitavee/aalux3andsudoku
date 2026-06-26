@@ -6,6 +6,9 @@
 #include "CrossPointSettings.h"
 #include "EpubReaderMenuActivity.h"
 #include "activities/Activity.h"
+#include "components/themes/BaseTheme.h"
+
+struct SettingInfo;
 
 class EpubReaderActivity final : public Activity {
   std::shared_ptr<Epub> epub;
@@ -36,15 +39,18 @@ class EpubReaderActivity final : public Activity {
   QuickSettingsState qsState = QuickSettingsState::CLOSED;
   int qsSelectedTab = 0;   // 0 = Reader, 1 = Controls
   int qsSelectedItem = 0;  // Currently highlighted setting index
-  int qsScrollOffset = 0;  // Pagination offset for the visible list
 
   bool qsNeedsBackgroundRender = false;
   bool qsSuppressConfirmRelease = false;
 
-  // Procedural helpers
+  uint8_t qsPendingOrientation = 0;
+  uint8_t autoPageTurnOption = 0;
+
+  const SettingInfo* qsItemAt(int tab, int index) const;
   int getQsItemCount(int tab) const;
   const char* getQsItemName(int tab, int index) const;
   const char* getQsItemValue(int tab, int index, char* tempBuf, size_t tempBufSize) const;
+  BaseTheme::ListToggleState getQsItemToggle(int tab, int index) const;
   void adjustQsItemValue(int tab, int index, bool increment);
   void renderQuickSettingsOverlay();
   void openQuickSettings();

@@ -35,34 +35,46 @@ inline const std::vector<SettingInfo>& getSettingsList() {
 
       // --- Reader ---
       SettingInfo::Enum(StrId::STR_FONT_FAMILY, &CrossPointSettings::fontFamily,
-                        {StrId::STR_BOOKERLY, StrId::STR_NOTO_SANS}, "fontFamily", StrId::STR_CAT_READER),
+                        {StrId::STR_BOOKERLY, StrId::STR_NOTO_SANS}, "fontFamily", StrId::STR_CAT_READER)
+          .inSection(StrId::STR_SECT_TEXT),
       SettingInfo::Enum(StrId::STR_FONT_SIZE, &CrossPointSettings::fontSize,
                         {StrId::STR_X_SMALL, StrId::STR_SMALL, StrId::STR_MEDIUM, StrId::STR_LARGE, StrId::STR_X_LARGE},
-                        "fontSize", StrId::STR_CAT_READER),
+                        "fontSize", StrId::STR_CAT_READER)
+          .inSection(StrId::STR_SECT_TEXT),
       SettingInfo::Enum(StrId::STR_LINE_SPACING, &CrossPointSettings::lineSpacing,
-                        {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE}, "lineSpacing", StrId::STR_CAT_READER),
-      SettingInfo::Value(StrId::STR_SCREEN_MARGIN, &CrossPointSettings::screenMargin, {5, 40, 5}, "screenMargin",
-                         StrId::STR_CAT_READER),
+                        {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE}, "lineSpacing", StrId::STR_CAT_READER)
+          .inSection(StrId::STR_SECT_TEXT),
       SettingInfo::Enum(StrId::STR_PARA_ALIGNMENT, &CrossPointSettings::paragraphAlignment,
                         {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                          StrId::STR_BOOK_S_STYLE},
-                        "paragraphAlignment", StrId::STR_CAT_READER),
-      SettingInfo::Toggle(StrId::STR_EMBEDDED_STYLE, &CrossPointSettings::embeddedStyle, "embeddedStyle",
-                          StrId::STR_CAT_READER),
-      SettingInfo::Toggle(StrId::STR_HYPHENATION, &CrossPointSettings::hyphenationEnabled, "hyphenationEnabled",
-                          StrId::STR_CAT_READER),
-      SettingInfo::Toggle(StrId::STR_BIONIC_READING, &CrossPointSettings::bionicReading, "bionicReading",
-                          StrId::STR_CAT_READER),
-      SettingInfo::Enum(StrId::STR_ORIENTATION, &CrossPointSettings::orientation,
-                        {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_INVERTED, StrId::STR_LANDSCAPE_CCW},
-                        "orientation", StrId::STR_CAT_READER),
+                        "paragraphAlignment", StrId::STR_CAT_READER)
+          .inSection(StrId::STR_SECT_TEXT),
+      SettingInfo::Value(StrId::STR_SCREEN_MARGIN, &CrossPointSettings::screenMargin, {5, 40, 5}, "screenMargin",
+                         StrId::STR_CAT_READER)
+          .inSection(StrId::STR_SECT_LAYOUT),
       SettingInfo::Toggle(StrId::STR_EXTRA_SPACING, &CrossPointSettings::extraParagraphSpacing, "extraParagraphSpacing",
-                          StrId::STR_CAT_READER),
+                          StrId::STR_CAT_READER)
+          .inSection(StrId::STR_SECT_LAYOUT),
+      SettingInfo::Toggle(StrId::STR_EMBEDDED_STYLE, &CrossPointSettings::embeddedStyle, "embeddedStyle",
+                          StrId::STR_CAT_READER)
+          .inSection(StrId::STR_SECT_LAYOUT),
+      SettingInfo::Toggle(StrId::STR_HYPHENATION, &CrossPointSettings::hyphenationEnabled, "hyphenationEnabled",
+                          StrId::STR_CAT_READER)
+          .inSection(StrId::STR_SECT_LAYOUT),
+      SettingInfo::Toggle(StrId::STR_BIONIC_READING, &CrossPointSettings::bionicReading, "bionicReading",
+                          StrId::STR_CAT_READER)
+          .inSection(StrId::STR_SECT_LAYOUT),
       SettingInfo::Toggle(StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing, "textAntiAliasing",
-                          StrId::STR_CAT_READER),
+                          StrId::STR_CAT_READER)
+          .inSection(StrId::STR_SECT_LAYOUT),
       SettingInfo::Enum(StrId::STR_IMAGES, &CrossPointSettings::imageRendering,
                         {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS},
-                        "imageRendering", StrId::STR_CAT_READER),
+                        "imageRendering", StrId::STR_CAT_READER)
+          .inSection(StrId::STR_SECT_LAYOUT),
+      SettingInfo::Enum(StrId::STR_ORIENTATION, &CrossPointSettings::orientation,
+                        {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_INVERTED, StrId::STR_LANDSCAPE_CCW},
+                        "orientation", StrId::STR_CAT_READER)
+          .inSection(StrId::STR_SECT_SCREEN),
       // --- Controls ---
       SettingInfo::Enum(StrId::STR_SIDE_BTN_LAYOUT, &CrossPointSettings::sideButtonLayout,
                         {StrId::STR_PREV_NEXT, StrId::STR_NEXT_PREV}, "sideButtonLayout", StrId::STR_CAT_CONTROLS),
@@ -144,4 +156,44 @@ inline const std::vector<SettingInfo>& getSettingsList() {
                          "clockUtcOffsetQ", StrId::STR_CUSTOMISE_STATUS_BAR),
   };
   return list;
+}
+
+inline std::vector<const SettingInfo*> projectSettings(const std::vector<StrId>& order) {
+  std::vector<const SettingInfo*> result;
+  result.reserve(order.size());
+  const auto& list = getSettingsList();
+  for (const StrId id : order) {
+    for (const auto& setting : list) {
+      if (setting.nameId == id) {
+        result.push_back(&setting);
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+inline const std::vector<const SettingInfo*>& getQuickSettingsReaderItems() {
+  static const std::vector<const SettingInfo*> items = projectSettings({
+      StrId::STR_FONT_FAMILY,
+      StrId::STR_FONT_SIZE,
+      StrId::STR_LINE_SPACING,
+      StrId::STR_SCREEN_MARGIN,
+      StrId::STR_PARA_ALIGNMENT,
+      StrId::STR_EMBEDDED_STYLE,
+      StrId::STR_HYPHENATION,
+      StrId::STR_EXTRA_SPACING,
+      StrId::STR_TEXT_AA,
+      StrId::STR_ORIENTATION,
+  });
+  return items;
+}
+
+inline const std::vector<const SettingInfo*>& getQuickSettingsControlsItems() {
+  static const std::vector<const SettingInfo*> items = projectSettings({
+      StrId::STR_SIDE_BTN_LAYOUT,
+      StrId::STR_LONG_PRESS_SKIP,
+      StrId::STR_SHORT_PWR_BTN,
+  });
+  return items;
 }

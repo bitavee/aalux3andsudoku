@@ -246,36 +246,6 @@ void BaseTheme::drawButtonHintsGlyphs(GfxRenderer& renderer, ButtonHintGlyphSet 
       continue;
     }
 
-    if (variant == ButtonHintGlyphSet::SettingsNav) {
-      constexpr int kPairHalf = 5;
-      constexpr int kPairShaft = 6;
-      constexpr int kPairGap = 2;
-      if (i == 2) {
-        const int upBaseY = glyphCy - kPairGap;
-        const int upApexY = upBaseY - kPairShaft;
-        const int xUp[3] = {cx - kPairHalf, cx + kPairHalf, cx};
-        const int yUp[3] = {upBaseY, upBaseY, upApexY};
-        renderer.fillPolygon(xUp, yUp, 3, true);
-        const int downBaseY = glyphCy + kPairGap;
-        const int downApexY = downBaseY + kPairShaft;
-        const int xDown[3] = {cx - kPairHalf, cx + kPairHalf, cx};
-        const int yDown[3] = {downBaseY, downBaseY, downApexY};
-        renderer.fillPolygon(xDown, yDown, 3, true);
-      } else {
-        const int leftBaseX = cx - kPairGap;
-        const int leftApexX = leftBaseX - kPairShaft;
-        const int xLeft[3] = {leftBaseX, leftBaseX, leftApexX};
-        const int yLeft[3] = {glyphCy - kPairHalf, glyphCy + kPairHalf, glyphCy};
-        renderer.fillPolygon(xLeft, yLeft, 3, true);
-        const int rightBaseX = cx + kPairGap;
-        const int rightApexX = rightBaseX + kPairShaft;
-        const int xRight[3] = {rightBaseX, rightBaseX, rightApexX};
-        const int yRight[3] = {glyphCy - kPairHalf, glyphCy + kPairHalf, glyphCy};
-        renderer.fillPolygon(xRight, yRight, 3, true);
-      }
-      continue;
-    }
-
     // Default: navigation up/down triangles.
     if (i == 2) {
       const int xPts[3] = {cx - kGlyphHalf, cx + kGlyphHalf, cx};
@@ -347,7 +317,12 @@ void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
                          const std::function<std::string(int index)>& rowTitle,
                          const std::function<std::string(int index)>& rowSubtitle,
                          const std::function<UIIcon(int index)>& rowIcon,
-                         const std::function<std::string(int index)>& rowValue, bool highlightValue) const {
+                         const std::function<std::string(int index)>& rowValue, bool highlightValue,
+                         const std::function<std::string(int index)>& rowSection,
+                         const std::function<ListToggleState(int index)>& rowToggle,
+                         const std::function<bool(int index)>& rowAction, bool solidSelection) const {
+  (void)highlightValue;
+  (void)solidSelection;
   int rowHeight =
       (rowSubtitle != nullptr) ? BaseMetrics::values.listWithSubtitleRowHeight : BaseMetrics::values.listRowHeight;
   int pageItems = rect.height / rowHeight;
@@ -389,6 +364,15 @@ void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
     const int itemY = rect.y + (i % pageItems) * rowHeight;
     int textWidth = contentWidth - BaseMetrics::values.contentSidePadding * 2 - (rowValue != nullptr ? 60 : 0);
 
+    if (rowSection != nullptr) {
+      const std::string section = rowSection(i);
+      const std::string prevSection = (i > 0) ? rowSection(i - 1) : std::string();
+      if (!section.empty() && section != prevSection) {
+        renderer.drawText(SMALL_FONT_ID, rect.x + BaseMetrics::values.contentSidePadding, itemY - rowHeight + 4,
+                          section.c_str(), true, EpdFontFamily::REGULAR);
+      }
+    }
+
     // Draw name
     auto itemName = rowTitle(i);
     auto font = (rowSubtitle != nullptr) ? UI_12_FONT_ID : UI_10_FONT_ID;
@@ -403,7 +387,19 @@ void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
                         i != selectedIndex);
     }
 
-    if (rowValue != nullptr) {
+    const ListToggleState toggleState = (rowToggle != nullptr) ? rowToggle(i) : ListToggleState::NotToggle;
+    const bool isAction = (rowAction != nullptr) && rowAction(i);
+
+    if (toggleState != ListToggleState::NotToggle) {
+      drawToggleSwitch(renderer, Rect{rect.x, itemY, contentWidth - BaseMetrics::values.contentSidePadding, rowHeight},
+                       toggleState == ListToggleState::On, i == selectedIndex);
+    } else if (isAction) {
+      constexpr int chevronHalf = 5;
+      const int chevronTipX = rect.x + contentWidth - BaseMetrics::values.contentSidePadding;
+      const int chevronCy = itemY + rowHeight / 2 - 2;
+      renderer.drawLine(chevronTipX - chevronHalf, chevronCy - chevronHalf, chevronTipX, chevronCy, i != selectedIndex);
+      renderer.drawLine(chevronTipX - chevronHalf, chevronCy + chevronHalf, chevronTipX, chevronCy, i != selectedIndex);
+    } else if (rowValue != nullptr) {
       // Draw value
       std::string valueText = rowValue(i);
       const auto valueTextWidth = renderer.getTextWidth(UI_10_FONT_ID, valueText.c_str());
@@ -411,6 +407,45 @@ void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
                         itemY, valueText.c_str(), i != selectedIndex);
     }
   }
+}
+
+void BaseTheme::drawToggleSwitch(const GfxRenderer& renderer, Rect rect, bool on, bool inverted) const {
+  constexpr int trackHeight = 22;
+  constexpr int trackWidth = 40;
+  constexpr int knobInset = 2;
+
+  const int trackX = rect.x + rect.width - trackWidth;
+  const int trackY = rect.y + (rect.height - trackHeight) / 2;
+  const int radius = trackHeight / 2;
+  const int knobSize = trackHeight - knobInset * 2;
+  const Color fg = inverted ? Color::White : Color::Black;
+  const Color bg = inverted ? Color::Black : Color::White;
+
+  if (on) {
+    renderer.fillRoundedRect(trackX, trackY, trackWidth, trackHeight, radius, fg);
+    const int knobX = trackX + trackWidth - knobInset - knobSize;
+    renderer.fillRoundedRect(knobX, trackY + knobInset, knobSize, knobSize, knobSize / 2, bg);
+  } else {
+    renderer.drawRoundedRect(trackX, trackY, trackWidth, trackHeight, 1, radius, !inverted);
+    const int knobX = trackX + knobInset;
+    renderer.drawRoundedRect(knobX, trackY + knobInset, knobSize, knobSize, 1, knobSize / 2, !inverted);
+  }
+}
+
+void BaseTheme::drawBottomSheetFrame(const GfxRenderer& renderer, Rect rect) const {
+  constexpr int cornerRadius = 14;
+  constexpr int grabberWidth = 44;
+  constexpr int grabberHeight = 4;
+  constexpr int grabberTopMargin = 8;
+
+  renderer.fillRoundedRect(rect.x, rect.y, rect.width, rect.height, cornerRadius, true, true, false, false,
+                           Color::White);
+  renderer.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 1, cornerRadius, true, true, false, false, true);
+  renderer.drawLine(rect.x, rect.y, rect.x + rect.width - 1, rect.y, true);
+
+  const int grabberX = rect.x + (rect.width - grabberWidth) / 2;
+  const int grabberY = rect.y + grabberTopMargin;
+  renderer.fillRoundedRect(grabberX, grabberY, grabberWidth, grabberHeight, grabberHeight / 2, Color::Black);
 }
 
 void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle) const {
@@ -467,7 +502,8 @@ void BaseTheme::drawSubHeader(const GfxRenderer& renderer, Rect rect, const char
 }
 
 void BaseTheme::drawTabBar(const GfxRenderer& renderer, const Rect rect, const std::vector<TabInfo>& tabs,
-                           bool selected) const {
+                           bool selected, bool solidSelection) const {
+  (void)solidSelection;
   constexpr int underlineHeight = 2;  // Height of selection underline
   constexpr int underlineGap = 4;     // Gap between text and underline
 

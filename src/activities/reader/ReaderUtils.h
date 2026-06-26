@@ -87,4 +87,34 @@ void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn) {
   renderer.restoreBwBuffer();
 }
 
+// Logical-coordinate insets that keep in-reader content clear of the bottom
+// glyph hint band. The band (drawButtonHintsGlyphs) always paints on the fixed
+// physical bottom edge, which maps to a different logical edge per orientation,
+// so a reader surface must reserve space on the matching logical edge.
+struct BandGutter {
+  int left;
+  int top;
+  int right;
+  int bottom;
+
+  int contentX() const { return left; }
+  int contentY() const { return top; }
+  int contentWidth(int screenWidth) const { return screenWidth - left - right; }
+  int contentHeight(int screenHeight) const { return screenHeight - top - bottom; }
+};
+
+inline BandGutter bandGutterForBottomHints(const GfxRenderer& renderer, int bandThickness) {
+  switch (renderer.getOrientation()) {
+    case GfxRenderer::Orientation::LandscapeClockwise:
+      return BandGutter{bandThickness, 0, 0, 0};
+    case GfxRenderer::Orientation::LandscapeCounterClockwise:
+      return BandGutter{0, 0, bandThickness, 0};
+    case GfxRenderer::Orientation::PortraitInverted:
+      return BandGutter{0, bandThickness, 0, 0};
+    case GfxRenderer::Orientation::Portrait:
+    default:
+      return BandGutter{0, 0, 0, bandThickness};
+  }
+}
+
 }  // namespace ReaderUtils
