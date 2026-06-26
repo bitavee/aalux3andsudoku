@@ -1,0 +1,285 @@
+---
+title: "AALU Reading Stats Revamp — a motivation-first reading companion"
+brief: "Turn AALU's two-number stats screen into a habit-building system: reading streaks, a daily goal, a calendar heatmap, a Year-in-Review, richer per-book insight, and a Bookworm Cat that reacts to how you read — all on one new stats.bin v7 data model, with every screen fixed to work in all four orientations."
+version: 2
+planId: "plan_aalu_stats_revamp"
+source: "agent-native-plan"
+---
+
+<RichText id="b-objective">
+
+### Objective & done criteria
+
+Today AALU's Stats screen shows two numbers (lifetime reading time and finished-book count) plus a short book list. This revamp turns it into a **motivation engine**: a reading streak you do not want to break, a daily goal with visible progress, a calendar heatmap, a Year-in-Review, sharper per-book insight, and a **Bookworm Cat** companion whose mood tracks your habit.
+
+**Done** means: a reader who opens Stats sees their current streak, today's goal progress, and the cat's mood at a glance; the formerly invisible Reading/Finished toggle is a labelled tab; the per-book screen renders correctly in every orientation; and all of it rides one `stats.bin` v7 migration so later screens are pure UI fast-follows with no second format bump.
+
+</RichText>
+
+<Callout id="b-recommend" tone="decision">
+
+**Recommended shape: ship the full v7 data model now, then layer the UI in phases.** The migration is the only irreversible step, so pay it once — the full 365-day history plus streak, goal, achievement, pet, and speed fields — even though the first UI cut renders only some of it. Then the heatmap, Year-in-Review, achievements grid, and per-book sparkline become UI-only additions with **no second migration**. RAM (+951 B, 0.24% of the 380 KB ceiling) and flash (~1.78 MB headroom, verified) are non-issues; the real constraints are clock-correctness and how many new screens you harden at once.
+
+</Callout>
+
+<RichText id="b-canvas-pointer">
+
+### What you are looking at
+
+The six screens above are the proposed Stats surfaces in portrait (the X4's reading orientation). **Overview** is the hero — streak, today's goal, and the cat lead the page. **Calendar** is the reading heatmap, **Awards** the achievements grid, **Year in Review** the annual recap, and the per-book screen is the redesigned `DetailedStatsActivity`. Every screen reflows to landscape from `renderer.getScreenWidth()/getScreenHeight()` — no hardcoded 800/480. A few decisions are still open — see **Open Questions** at the bottom.
+
+</RichText>
+
+<RichText id="b-datamodel-head">
+
+### Data model: stats.bin v7
+
+Everything rides one new on-disk format, `stats.bin` v7 (today's is v6 in `src/stats/ReadingStatsManager.{h,cpp}`). The v7 structs keep v6's **exact byte prefix**, so migration is a pure tail-append: read the old bytes, zero the new fields, save as v7, and re-evaluate achievements once so long-time readers immediately earn the hours/books they already have. The centerpiece is a **365-entry ring of daily reading minutes** in `GlobalStats`; streak, goal, achievement, pet, and speed values are cheap scalars layered on top. Per-book time-to-finish and reading-speed read existing fields plus a tiny 4-sample speed ring.
+
+</RichText>
+
+<Table
+  id="b-v7-fields"
+  columns={["New field", "Where", "Bytes", "Powers"]}
+  rows={[
+    ["dayMinutes[365] (u16)", "GlobalStats", "730", "heatmap, streak, week/month/year, 7-day chart"],
+    ["currentStreakDays / longestStreakDays", "GlobalStats", "4", "streak headline + cat mood"],
+    ["goalTarget / goalAchievedDays", "GlobalStats", "4", "daily goal bar + Wrapped"],
+    ["achievementBits (u32)", "GlobalStats", "4", "18 badges (room for 32)"],
+    ["petXp (u16)", "GlobalStats", "2", "cat growth stage"],
+    ["lastReadDay / firstEverDay / bestDayMinutes / lifetimeActiveDays / dayRingHead / dayRingStartDay", "GlobalStats", "~12", "streak anchor, roll-ups, Wrapped"],
+    ["totalPagesLifetime (u32)", "GlobalStats", "4", "page badges + Wrapped (survives 9-book eviction)"],
+    ["speedSamples[4] + lastReadDay", "BookStatEntry x9", "180", "per-book speed trend + recency"],
+  ]}
+/>
+
+<Callout id="b-v7-budget" tone="info">
+
+**Total: +951 B RAM** — `GlobalStats` 44 → 804 B, `BookStatEntry` 468 → 488 B (x9 books) — all static, zero malloc, **0.24% of the 380 KB ceiling**. `goalType`, `petStage`, `speedHead`, and `speedCount` reuse the v6 `_pad` bytes (0 net). On disk, `stats.bin` grows by the same ~951 B in one debounced SD write. The v4/v5/v6 → v7 load chain must stay intact (`ReadingStatsManager::load`), and the migration must zero `achievementBits` so existing users do not boot with phantom unlocks.
+
+</Callout>
+
+<AnnotatedCode
+  id="b-clock-code"
+  filename="src/stats/ReadingStatsManager.cpp (planned)"
+  language="cpp"
+  code={"void ReadingStatsManager::endSession(uint8_t progressPercent, uint32_t pages) {\n  const uint32_t elapsedMs =\n      (xTaskGetTickCount() - sessionStartTick) * portTICK_PERIOD_MS;\n  applyV6Totals(elapsedMs, pages);              // lifetime totals always update\n\n  if (HalClock::getInstance().isAvailable()) {  // gate ALL day-based writes\n    const uint16_t day = localDayNumber();      // (time() + tzOffset) / 86400\n    advanceDayRing(day);                        // zero skipped slots, wrap mod 365\n    dayMinutes[dayRingHead] =\n        satAddU16(dayMinutes[dayRingHead], elapsedMs / 60000);\n    updateStreak(day);                          // current/longest, forgiving\n  }\n  save();\n}"}
+  annotations={[
+    {
+      lines: "6",
+      label: "The gate",
+      note: "Without a synced clock there is no real day-number, so every per-day feature is skipped — but lifetime totals still update.",
+    },
+    {
+      lines: "8-9",
+      label: "Gap-safe ring",
+      note: "Advancing the ring zeroes skipped days (blank heatmap cells); a >365-day jump zeroes once, never loops (watchdog-safe).",
+    },
+    {
+      lines: "11",
+      label: "Forgiving streak",
+      note: "current++ on consecutive days, reset on a gap; UI treats a streak as alive only if (today - lastReadDay) <= 1.",
+    },
+  ]}
+/>
+
+<RichText id="b-clock-head">
+
+### The load-bearing risk: no real-time clock
+
+</RichText>
+
+<Callout id="b-clock-risk" tone="risk">
+
+**The X4 has no RTC chip** (verified: `HalClock.h:24-25`, `HalClock.cpp:55`). `isAvailable()` is true only after a WiFi/NTP sync sets `time() >= 1700000000`, which then **persists across deep-sleep**. So streak, heatmap, daily goal, cat mood, and the today/week/month/year totals are meaningless until the reader syncs time **once**. The plan: (1) gate every per-day write on `isAvailable()`; (2) when clock-less, render a calm "Connect WiFi to start tracking your reading days" state instead of fake data; (3) survive an NTP correction (clock jumps) without zeroing valid history; (4) clock-less devices still get every lifetime total they have today. AALU already ships `syncFromNTP()` and `getTime()`, so the plumbing exists — this is a UX/onboarding task, not new infrastructure.
+
+</Callout>
+
+<RichText id="b-ia-head">
+
+### Navigation & information architecture
+
+Fold the new surfaces into one **tabbed** `StatsActivity`, reusing `GUI.drawTabBar` (already proven in `SettingsActivity`) so the invisible Reading/Finished toggle becomes a labelled tab. One grammar everywhere: **Left/Right** switch sibling tabs, **Up/Down** move within content, **Confirm** drills in (long-press removes a book), **Back** pops one level. Two new `ButtonHintGlyphSet` variants are added procedurally in `BaseTheme.cpp` — `StatsTabbed` (◀ ● ◁ ▷) and `GoalStepper` (◀ ● − +) — never the legacy rectangle hint bar. The glyph band itself now takes a `slotMask` so a screen renders only its active buttons in their fixed slots — already implemented in `BaseTheme::drawButtonHintsGlyphs` and applied to the per-book detail screen, which previously showed inert up/down arrows.
+
+</RichText>
+
+<Diagram
+  id="b-ia-diagram"
+  data={{
+    html: '<div class="diagram-panel" data-rough style="display:flex;flex-direction:column;gap:14px;padding:18px;align-items:center"><div class="diagram-node">Home</div><div class="diagram-muted">&#8595;</div><div class="diagram-node">Stats &middot; tabbed</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"><div class="diagram-node">Overview</div><div class="diagram-node">Calendar</div><div class="diagram-node">Books</div><div class="diagram-node">Awards</div><div class="diagram-node">Goal</div><div class="diagram-node">Wrapped</div></div><div style="display:flex;gap:28px;flex-wrap:wrap;justify-content:center"><div class="diagram-muted">Books &#8594; book &#8594; Detailed stats</div><div class="diagram-muted">Awards &#8594; badge detail</div></div><div class="diagram-muted" style="text-align:center;max-width:520px">Left / Right switch tabs &middot; Up / Down move within &middot; Confirm drills in &middot; Back pops. Max depth 2 from Home.</div></div>',
+    css: '.diagram-panel{border:1.4px solid var(--wf-line);border-radius:12px}.diagram-node{border:1.4px solid var(--wf-line);border-radius:8px;padding:7px 12px;font-weight:600;font-size:13px}.diagram-muted{color:var(--wf-muted);font-size:12px}',
+    caption: "Shallow, tabbed IA — the Reading/Finished toggle becomes the Books sub-tab.",
+  }}
+/>
+
+<RichText id="b-tiers-head">
+
+### Feature tiers — mock the dream, trim by risk (not by bytes)
+
+</RichText>
+
+<Table
+  id="b-tiers"
+  columns={["Feature", "Dream", "Recommended", "Minimal"]}
+  rows={[
+    ["stats.bin v7 (full 365-day model)", "Yes", "Yes", "Yes"],
+    ["Reading streak (current + longest)", "Yes", "Yes", "Yes"],
+    ["Daily goal + progress bar", "Yes", "Yes", "Yes"],
+    ["Visible Reading/Finished (tab)", "Yes", "Yes", "Yes (label only)"],
+    ["Per-book fix + time-to-finish", "Yes", "Yes", "Yes"],
+    ["Tabbed IA + hero dashboard", "Yes", "Yes", "Keep 1 screen"],
+    ["Calendar heatmap", "Yes", "Yes", "Defer (UI-only)"],
+    ["Achievements (18 badges)", "Yes", "Yes", "Defer (UI-only)"],
+    ["Bookworm Cat companion", "Yes (88x88)", "Yes (64x64)", "Defer (UI-only)"],
+    ["Year-in-Review (Wrapped)", "Yes", "Fast-follow", "Defer (UI-only)"],
+    ["Reading-speed sparkline", "Yes", "Fast-follow (arrow only)", "Defer"],
+  ]}
+/>
+
+<RichText id="b-roadmap-head">
+
+### Implementation roadmap
+
+Each phase is independently shippable and testable. The full v7 model lands in Phase 1 so every later phase is UI-only.
+
+</RichText>
+
+<Table
+  id="b-roadmap"
+  columns={["Phase", "Delivers", "Key files"]}
+  rows={[
+    ["1 — Foundation", "stats.bin v7 structs, v6→v7 migration, clock gating + clock-less state, reset path", "ReadingStatsManager.{h,cpp}, docs/file-formats.md"],
+    ["2 — Habit core", "Tabbed IA, hero dashboard (streak, goal bar, 7-day chart, periods), visible Reading/Finished, new glyph variants", "StatsActivity.{h,cpp}, components/themes/BaseTheme.cpp"],
+    ["3 — Calendar", "Reading heatmap (4-bucket dither, rolling-year + full-year)", "StatsActivity (Calendar tab) or HeatmapActivity"],
+    ["4 — Companion", "Bookworm Cat mood machine + dashboard corner + default sleep screen", "Companion.{h,cpp}, src/images/Companion*.h, SleepActivity"],
+    ["5 — Achievements", "18-badge mask, grid screen, deferred unlock toast", "AchievementsActivity.{h,cpp}, StatsActivity"],
+    ["6 — Per-book", "Orientation-correct DetailedStats + time-to-finish + speed trend", "DetailedStatsActivity.{h,cpp}"],
+    ["7 — Fast-follow", "Year-in-Review Wrapped cards + speed sparkline polish", "WrappedActivity.{h,cpp}"],
+  ]}
+/>
+
+<RichText id="b-files-head">
+
+### Files touched
+
+</RichText>
+
+<FileTree
+  id="b-files"
+  title="Stats revamp — files"
+  entries={[
+    { path: "src/stats/ReadingStatsManager.h", change: "modified", note: "v7 structs (GlobalStats 804 B, BookStatEntry 488 B), STATS_FILE_VERSION 7" },
+    { path: "src/stats/ReadingStatsManager.cpp", change: "modified", note: "day ring + streak/goal/pet/speed updates, clock gating, v6→v7 migration, reset()" },
+    { path: "src/activities/stats/StatsActivity.cpp", change: "modified", note: "tabbed IA, hero dashboard, heatmap + calendar tab, entry points" },
+    { path: "src/activities/stats/DetailedStatsActivity.cpp", change: "modified", note: "kill hardcoded screenW=480; add time-to-finish + speed trend" },
+    { path: "src/activities/stats/AchievementsActivity.cpp", change: "added", note: "badge grid + deferred toast" },
+    { path: "src/activities/stats/WrappedActivity.cpp", change: "added", note: "Year-in-Review card stack (fast-follow)" },
+    { path: "src/components/Companion.cpp", change: "added", note: "cat mood machine (pure view over streak/goal)" },
+    { path: "src/images/Companion88.h", change: "added", note: "1bpp cat sprites (or reuse/retire Logo120)" },
+    { path: "src/components/themes/BaseTheme.cpp", change: "modified", note: "StatsTabbed + GoalStepper glyph variants" },
+    { path: "lib/I18n/translations/en.yaml", change: "modified", note: "STR_* for streak/goal/badges/companion/Wrapped" },
+    { path: "docs/file-formats.md", change: "modified", note: "document stats.bin v7" },
+  ]}
+/>
+
+<RichText id="b-competitive-head">
+
+### Competitive validation
+
+</RichText>
+
+<Callout id="b-competitive" tone="info">
+
+AALU already out-features its on-device peers — CrossPoint upstream ships **zero** stats, CrossInk is minimal — so streaks + daily history make AALU the stats leader of the whole Xteink ecosystem. The design borrows the proven patterns: **KOReader** (time-to-finish, calendar), **Boox** (weekly chart), **Kindle/StoryGraph** (streaks, ahead/behind goal), **Goodreads** (Year in Books). Correctness lessons baked in: **forgiving** streaks ("X of the last 7 days", not a brittle daily chain), **idle-gap exclusion + page-dwell caps** so time and pace stay honest (the device deep-sleeps between page turns), **pages/hour never WPM** (EPUB has no on-device word index), a **stats-reset path** (Kobo became infamous for corrupted stats with no reset), and **numbers + a rule-based archetype** for Wrapped — never AI copy (Fable's AI Wrapped was widely panned).
+
+</Callout>
+
+<RichText id="b-verify-head">
+
+### Verification
+
+</RichText>
+
+<Checklist
+  id="b-verify"
+  items={[
+    { id: "v-build", label: "pio run clean; Total image size stays under 6,553,344 B (wc -c .pio/build/default/firmware.bin)" },
+    { id: "v-orient", label: "All 4 orientations on real hardware: dashboard, calendar, per-book, awards, wrapped" },
+    { id: "v-clock-on", label: "Clock SYNCED path: read across days; streak/heatmap/goal/periods populate correctly" },
+    { id: "v-clock-off", label: "Clock-LESS path: calm 'sync time' state, lifetime totals still work, no garbage day-0 writes" },
+    { id: "v-migrate", label: "v6 stats.bin upgrades to v7 with history intact; achievements re-evaluated once; no phantom unlocks" },
+    { id: "v-clockjump", label: "NTP correction (clock jumps backward/forward) does not zero valid history" },
+    { id: "v-heap", label: "ESP.getFreeHeap() > 50 KB; no leak across Stats activity transitions" },
+    { id: "v-host", label: "Host tests green (cmake + ctest)" },
+  ]}
+/>
+
+<RichText id="b-oq-head">
+
+### Open Questions
+
+</RichText>
+
+<QuestionForm
+  id="b-open-questions"
+  questions={[
+    {
+      id: "q-heatmap-window",
+      title: "How many days of history should v7 store?",
+      subtitle: "Single biggest RAM line. RAM is comfortable at all sizes, so this is really about heatmap reach.",
+      mode: "single",
+      options: [
+        { id: "h365", label: "365 days (+730 B)", detail: "A full heatmap year and Year-in-Review window.", recommended: true },
+        { id: "h180", label: "180 days (+360 B)", detail: "Half-year heatmap; lighter.", },
+        { id: "h90", label: "90 days (+180 B)", detail: "Quarter only; streak still works but no annual view.", },
+      ],
+      required: true,
+    },
+    {
+      id: "q-goal-metric",
+      title: "Daily goal in minutes or pages?",
+      mode: "single",
+      options: [
+        { id: "gmin", label: "Minutes only", detail: "Time is tracked far more reliably than pages; no extra per-day array.", recommended: true },
+        { id: "gpage", label: "Add a pages/day option", detail: "Needs a parallel per-day pages array (+730 B) for the ring to read.", },
+      ],
+      required: true,
+    },
+    {
+      id: "q-cat-size",
+      title: "Bookworm Cat sprite size?",
+      subtitle: "Flash has ~1.78 MB headroom, so both fit comfortably.",
+      mode: "single",
+      options: [
+        { id: "c88", label: "88x88 (~6 KB)", detail: "Nicer, more expressive; flash is not the constraint.", recommended: true },
+        { id: "c64", label: "64x64 (~3 KB)", detail: "Leaner if you would rather keep the image small.", },
+      ],
+    },
+    {
+      id: "q-wrapped-tab",
+      title: "Should Year-in-Review be a permanent tab?",
+      mode: "single",
+      options: [
+        { id: "wseasonal", label: "Seasonal / contextual", detail: "Surface near year-end or first open of a new year; avoids a mostly-empty tab 11 months a year.", recommended: true },
+        { id: "wpermanent", label: "Always-visible 6th tab", detail: "Simpler IA, but mostly empty most of the year.", },
+      ],
+    },
+    {
+      id: "q-week-start",
+      title: "Week start for the heatmap and 7-day chart?",
+      mode: "single",
+      options: [
+        { id: "mon", label: "Monday", detail: "ISO-style; shown in the mocks.", recommended: true },
+        { id: "sun", label: "Sunday", detail: "US-style.", },
+      ],
+    },
+    {
+      id: "q-constraints",
+      title: "Anything else to constrain before Phase 1?",
+      subtitle: "Scope, must-haves, things to leave out.",
+      mode: "freeform",
+      placeholder: "e.g. cut the cat, or ship heatmap before achievements...",
+    },
+  ]}
+  submitLabel="Send answers"
+/>
