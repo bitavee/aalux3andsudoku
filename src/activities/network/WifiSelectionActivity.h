@@ -77,7 +77,7 @@ class WifiSelectionActivity final : public Activity {
   int forgetPromptSelection = 0;
 
   // Connection timeout
-  static constexpr unsigned long CONNECTION_TIMEOUT_MS = 15000;
+  static constexpr unsigned long CONNECTION_TIMEOUT_MS = 45000;
   unsigned long connectionStartTime = 0;
 
   void renderNetworkList() const;

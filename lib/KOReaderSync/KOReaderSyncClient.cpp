@@ -14,8 +14,11 @@ namespace {
 // Device identifier for CrossPoint reader
 constexpr char DEVICE_NAME[] = "AALU";
 constexpr char DEVICE_ID[] = "aalu";
+constexpr uint16_t HTTP_TIMEOUT_MS = 45000;
 
 void addAuthHeaders(HTTPClient& http) {
+  http.setConnectTimeout(HTTP_TIMEOUT_MS);
+  http.setTimeout(HTTP_TIMEOUT_MS);
   http.addHeader("Accept", "application/vnd.koreader.v1+json");
   http.addHeader("x-auth-user", KOREADER_STORE.getUsername().c_str());
   http.addHeader("x-auth-key", KOREADER_STORE.getMd5Password().c_str());
@@ -66,7 +69,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::authenticate() {
 }
 
 KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& documentHash,
-                                                          KOReaderProgress& outProgress) {
+                                                          KOReaderProgress& outProgress, int* outHttpCode) {
   if (!KOREADER_STORE.hasCredentials()) {
     LOG_DBG("KOSync", "No credentials configured");
     return NO_CREDENTIALS;
@@ -89,6 +92,9 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
   addAuthHeaders(http);
 
   const int httpCode = http.GET();
+  if (outHttpCode) {
+    *outHttpCode = httpCode;
+  }
 
   if (httpCode == 200) {
     // Parse JSON response from response string
@@ -128,7 +134,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
   return SERVER_ERROR;
 }
 
-KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgress& progress) {
+KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgress& progress, int* outHttpCode) {
   if (!KOREADER_STORE.hasCredentials()) {
     LOG_DBG("KOSync", "No credentials configured");
     return NO_CREDENTIALS;
@@ -166,6 +172,9 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
 
   const int httpCode = http.PUT(body.c_str());
   http.end();
+  if (outHttpCode) {
+    *outHttpCode = httpCode;
+  }
 
   LOG_DBG("KOSync", "Update progress response: %d", httpCode);
 

@@ -27,7 +27,7 @@ void syncTimeWithNTP() {
 
   // Wait for time to sync (with timeout)
   int retry = 0;
-  const int maxRetries = 50;  // 5 seconds max
+  const int maxRetries = 200;  // 20 seconds max
   while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED && retry < maxRetries) {
     vTaskDelay(100 / portTICK_PERIOD_MS);
     retry++;
@@ -107,7 +107,8 @@ void KOReaderSyncActivity::performSync() {
   requestUpdateAndWait();
 
   // Fetch remote progress
-  const auto result = KOReaderSyncClient::getProgress(documentHash, remoteProgress);
+  int httpCode = 0;
+  const auto result = KOReaderSyncClient::getProgress(documentHash, remoteProgress, &httpCode);
 
   if (result == KOReaderSyncClient::NOT_FOUND) {
     // No remote progress - offer to upload
@@ -124,7 +125,9 @@ void KOReaderSyncActivity::performSync() {
     {
       RenderLock lock(*this);
       state = SYNC_FAILED;
-      statusMessage = KOReaderSyncClient::errorString(result);
+      char msg[96];
+      snprintf(msg, sizeof(msg), "%s (code %d)", KOReaderSyncClient::errorString(result), httpCode);
+      statusMessage = msg;
     }
     requestUpdate(true);
     return;
@@ -175,14 +178,17 @@ void KOReaderSyncActivity::performUpload() {
 
   progress.percentage = koPos.percentage;
 
-  const auto result = KOReaderSyncClient::updateProgress(progress);
+  int httpCode = 0;
+  const auto result = KOReaderSyncClient::updateProgress(progress, &httpCode);
 
   if (result != KOReaderSyncClient::OK) {
     wifiOff();
     {
       RenderLock lock(*this);
       state = SYNC_FAILED;
-      statusMessage = KOReaderSyncClient::errorString(result);
+      char msg[96];
+      snprintf(msg, sizeof(msg), "%s (code %d)", KOReaderSyncClient::errorString(result), httpCode);
+      statusMessage = msg;
     }
     requestUpdate();
     return;

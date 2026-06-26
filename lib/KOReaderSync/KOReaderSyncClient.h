@@ -41,16 +41,18 @@ class KOReaderSyncClient {
    * Get reading progress for a document.
    * @param documentHash The document hash (from KOReaderDocumentId)
    * @param outProgress Output: the progress data
+   * @param outHttpCode Optional output: HTTP status code, or a negative HTTPClient error code
    * @return OK on success, NOT_FOUND if no progress exists, error code on failure
    */
-  static Error getProgress(const std::string& documentHash, KOReaderProgress& outProgress);
+  static Error getProgress(const std::string& documentHash, KOReaderProgress& outProgress, int* outHttpCode = nullptr);
 
   /**
    * Update reading progress for a document.
    * @param progress The progress data to upload
+   * @param outHttpCode Optional output: HTTP status code, or a negative HTTPClient error code
    * @return OK on success, error code on failure
    */
-  static Error updateProgress(const KOReaderProgress& progress);
+  static Error updateProgress(const KOReaderProgress& progress, int* outHttpCode = nullptr);
 
   /**
    * Get human-readable error message.

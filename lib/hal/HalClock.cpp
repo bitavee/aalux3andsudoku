@@ -173,8 +173,8 @@ bool HalClock::syncFromNTP() {
   LOG_INF("CLK", "Starting NTP sync...");
   configTzTime("UTC0", "pool.ntp.org", "time.nist.gov");
 
-  // Wait for SNTP sync to complete (up to 5 seconds)
-  constexpr int maxAttempts = 50;
+  // Wait for SNTP sync to complete (up to 20 seconds)
+  constexpr int maxAttempts = 200;
   for (int i = 0; i < maxAttempts; i++) {
     if (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
       time_t now = time(nullptr);
