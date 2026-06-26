@@ -806,5 +806,5 @@ void HomeActivity::render(RenderLock&&) {
   // render-perf optimization for the *next* frame; the overlay itself must
   // show on this frame either way.
   drawFocus();
-  renderer.displayBuffer();
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
 }
