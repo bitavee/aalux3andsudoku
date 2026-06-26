@@ -186,7 +186,7 @@ void drawSolidDisc(const GfxRenderer& renderer, int cx, int cy, int radius) {
 }
 }  // namespace
 
-void BaseTheme::drawButtonHintsGlyphs(GfxRenderer& renderer, ButtonHintGlyphSet variant) const {
+void BaseTheme::drawButtonHintsGlyphs(GfxRenderer& renderer, ButtonHintGlyphSet variant, uint8_t slotMask) const {
   const GfxRenderer::Orientation orig_orientation = renderer.getOrientation();
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
 
@@ -201,6 +201,7 @@ void BaseTheme::drawButtonHintsGlyphs(GfxRenderer& renderer, ButtonHintGlyphSet 
   const int glyphCy = bandTop + bandHeight / 2;
 
   for (int i = 0; i < kSlotCount; ++i) {
+    if (!(slotMask & (1 << i))) continue;
     const int cx = i * slotWidth + slotWidth / 2;
 
     if (i == 0) {

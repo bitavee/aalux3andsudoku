@@ -4,6 +4,8 @@
 
 #include "activities/Activity.h"
 
+struct BookStatEntry;
+
 class DetailedStatsActivity final : public Activity {
  public:
   DetailedStatsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, uint8_t bookIndex);
@@ -15,6 +17,7 @@ class DetailedStatsActivity final : public Activity {
 
  private:
   void renderDetailedGrid() const;
+  void drawCover(const BookStatEntry& book, int x, int y, int w, int h) const;
   void drawCoverPlaceholder(int x, int y, int w, int h, const char* title) const;
 
   uint8_t _bookIndex;

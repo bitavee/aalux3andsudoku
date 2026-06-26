@@ -10,7 +10,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 
+#include "CatSprites.h"
+#include "CrossPointSettings.h"
 #include "DetailedStatsActivity.h"  // detailedStatistics
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
@@ -153,11 +156,15 @@ void StatsActivity::loop() {
   // (e.g. when Finished has no entries, Right would no-op and the only way
   // back to Reading is Back -> re-enter Stats).
   if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-    showingFinished = !showingFinished;
+    viewMode = static_cast<uint8_t>((viewMode + 1) % 6);
+    showingFinished = (viewMode == 1);
     selectedBookIndex = 0;
     requestUpdate();
     return;
   }
+
+  // Badges and Pet are read-only views; the rest of the input drives the list.
+  if (viewMode >= 2) return;
 
   const uint8_t bookCount = getVisibleBookCount();
   if (bookCount == 0) return;
@@ -271,18 +278,31 @@ void StatsActivity::render(RenderLock&& lock) {
 
   renderer.clearScreen();
 
-  // Draw standard header
-  GUI.drawHeader(renderer, Rect(0, metrics.topPadding, screenW, metrics.headerHeight), tr(STR_STATS_TITLE));
+  const char* viewName = (viewMode == 0)   ? tr(STR_STATS_VIEW_READING)
+                         : (viewMode == 1) ? tr(STR_STATS_VIEW_FINISHED)
+                         : (viewMode == 2) ? tr(STR_STATS_BADGES)
+                         : (viewMode == 3) ? tr(STR_STATS_PET)
+                         : (viewMode == 4) ? tr(STR_STATS_CALENDAR)
+                                           : tr(STR_STATS_WRAPPED);
+  GUI.drawHeader(renderer, Rect(0, metrics.topPadding, screenW, metrics.headerHeight), tr(STR_STATS_TITLE), viewName);
 
   const int contentTop = metrics.topPadding + metrics.headerHeight;
   const int contentH = screenH - contentTop - metrics.buttonHintsHeight;
 
-  // Layout split: Top 25% for global stats, bottom 75% for book list
-  const int topH = contentH / 4;
-  const int bottomH = contentH - topH;
-
-  renderTopPanel(contentTop, topH, screenW);
-  renderBookPanel(contentTop + topH, bottomH, screenW);
+  if (viewMode <= 1) {
+    const int topH = contentH / 4;
+    const int bottomH = contentH - topH;
+    renderTopPanel(contentTop, topH, screenW);
+    renderBookPanel(contentTop + topH, bottomH, screenW);
+  } else if (viewMode == 2) {
+    renderBadges(contentTop, contentH, screenW);
+  } else if (viewMode == 3) {
+    renderPet(contentTop, contentH, screenW);
+  } else if (viewMode == 4) {
+    renderCalendar(contentTop, contentH, screenW);
+  } else {
+    renderWrapped(contentTop, contentH, screenW);
+  }
 
   GUI.drawButtonHintsGlyphs(renderer, BaseTheme::ButtonHintGlyphSet::StatsActions);
 
@@ -303,28 +323,415 @@ void StatsActivity::renderTopPanel(int panelY, int panelH, int screenW) const {
 
   const int col1X = pad;
   const int col2X = screenW / 2 + pad;
-
-  // Evenly space 3 rows: headers, time values, session counts
   const int rowStep = panelH / 4;
-  const int row1Y = panelY + rowStep / 2;  // Column headers
-  const int row2Y = row1Y + rowStep;       // Time values
-  // const int row3Y = row2Y + rowStep;       // Session values
+  const int row1Y = panelY + rowStep / 2;
+  const int row2Y = row1Y + rowStep;
+  const int row3Y = row2Y + rowStep;
 
-  // Column 1: Header - All Time Stats
-  renderer.drawText(UI_12_FONT_ID, col1X, row1Y, tr(STR_STATS_ALL_TIME), true, EpdFontFamily::BOLD);
+  const time_t nowEpoch = time(nullptr);
+  const bool clockOk = stats::epochValid(static_cast<int64_t>(nowEpoch));
+  const uint16_t today =
+      clockOk ? stats::dayNumber(static_cast<int64_t>(nowEpoch), stats::utcOffsetSeconds(SETTINGS.clockUtcOffsetQ)) : 0;
 
-  // Column 2: Header - Global Milestone
-  renderer.drawText(UI_12_FONT_ID, col2X, row1Y, tr(STR_FINISHED_BOOKS), true, EpdFontFamily::BOLD);
+  char buf[24];
 
-  // Value: Total cumulative reading hours
-  char bufAllTime[16];
-  formatDuration(bufAllTime, sizeof(bufAllTime), global.totalReadingMs);
-  renderer.drawText(UI_12_FONT_ID, col1X, row2Y, bufAllTime, true);
+  renderer.drawText(UI_12_FONT_ID, col1X, row1Y, tr(STR_STATS_STREAK), true, EpdFontFamily::BOLD);
+  if (clockOk) {
+    const uint16_t live = stats::streakAlive(global, today) ? global.currentStreakDays : 0;
+    snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(live));
+    renderer.drawText(UI_12_FONT_ID, col1X, row2Y, buf, true);
+    snprintf(buf, sizeof(buf), "%s %u", tr(STR_STATS_LONGEST), static_cast<unsigned>(global.longestStreakDays));
+    renderer.drawText(UI_10_FONT_ID, col1X, row3Y, buf, true);
+  } else {
+    renderer.drawText(UI_10_FONT_ID, col1X, row2Y, tr(STR_STATS_SYNC_TIME), true);
+  }
 
-  // Value: Finished Books count
-  char bufFinished[12];
-  snprintf(bufFinished, sizeof(bufFinished), "%u", static_cast<unsigned>(global.totalBooksFinished));
-  renderer.drawText(UI_12_FONT_ID, col2X, row2Y, bufFinished, true);
+  if (clockOk) {
+    renderer.drawText(UI_12_FONT_ID, col2X, row1Y, tr(STR_STATS_TODAY), true, EpdFontFamily::BOLD);
+    const uint32_t todayMin = stats::sumLastNDays(global, today, 1);
+    snprintf(buf, sizeof(buf), "%u / %u min", static_cast<unsigned>(todayMin),
+             static_cast<unsigned>(global.goalTarget));
+    renderer.drawText(UI_12_FONT_ID, col2X, row2Y, buf, true);
+    const int barW = screenW / 2 - 2 * pad;
+    const int barY = row3Y - 2;
+    const int barH = 8;
+    renderer.drawRect(col2X, barY, barW, barH, true);
+    unsigned pct = (global.goalTarget > 0) ? (todayMin * 100u / global.goalTarget) : 0u;
+    if (pct > 100u) pct = 100u;
+    const int fw = (barW - 2) * static_cast<int>(pct) / 100;
+    if (fw > 0) renderer.fillRect(col2X + 1, barY + 1, fw, barH - 2, true);
+  } else {
+    renderer.drawText(UI_12_FONT_ID, col2X, row1Y, tr(STR_STATS_ALL_TIME), true, EpdFontFamily::BOLD);
+    char bufAllTime[16];
+    formatDuration(bufAllTime, sizeof(bufAllTime), global.totalReadingMs);
+    renderer.drawText(UI_12_FONT_ID, col2X, row2Y, bufAllTime, true);
+    snprintf(buf, sizeof(buf), "%s %u", tr(STR_FINISHED_BOOKS), static_cast<unsigned>(global.totalBooksFinished));
+    renderer.drawText(UI_10_FONT_ID, col2X, row3Y, buf, true);
+  }
+}
+
+static void fillTriUp(GfxRenderer& r, int cx, int baseY, int halfW, int height, bool state) {
+  if (height <= 0) return;
+  for (int i = 0; i <= height; ++i) {
+    const int w = halfW * (height - i) / height;
+    r.drawLine(cx - w, baseY - i, cx + w, baseY - i, state);
+  }
+}
+
+static void drawDisc(GfxRenderer& r, int cx, int cy, int radius, Color color) {
+  if (radius <= 0) return;
+  r.fillRoundedRect(cx - radius, cy - radius, radius * 2, radius * 2, radius, color);
+}
+
+static void badgeRing(GfxRenderer& r, int cx, int cy, int radius, int lineWidth, bool state) {
+  if (radius <= 0) return;
+  r.drawRoundedRect(cx - radius, cy - radius, radius * 2, radius * 2, lineWidth, radius, state);
+}
+
+static void icFlame(GfxRenderer& r, int cx, int cy, int s, bool earned) {
+  const bool fg = !earned, bg = earned;
+  const Color fgC = earned ? White : Black, bgC = earned ? Black : White;
+  fillTriUp(r, cx, cy + s * 40 / 100, s * 62 / 100, s * 150 / 100, fg);
+  drawDisc(r, cx, cy + s * 38 / 100, s * 62 / 100, fgC);
+  fillTriUp(r, cx, cy + s * 46 / 100, s * 30 / 100, s * 85 / 100, bg);
+  drawDisc(r, cx, cy + s * 42 / 100, s * 30 / 100, bgC);
+}
+
+static void icBooks(GfxRenderer& r, int cx, int cy, int s, bool earned) {
+  const bool bg = earned;
+  const Color fgC = earned ? White : Black;
+  int hh = s * 32 / 100;
+  if (hh < 4) hh = 4;
+  const int ws[3] = {s * 160 / 100, s * 190 / 100, s * 150 / 100};
+  const int offs[3] = {-s * 18 / 100, s * 12 / 100, -s * 6 / 100};
+  int y = cy - s * 78 / 100;
+  for (int i = 0; i < 3; ++i) {
+    const int x = cx - ws[i] / 2 + offs[i];
+    r.fillRoundedRect(x, y, ws[i], hh, 2, fgC);
+    r.fillRect(x + 3, y + 1, 2, hh - 2, bg);
+    y += hh + 3;
+  }
+}
+
+static void icPage(GfxRenderer& r, int cx, int cy, int s, bool earned) {
+  const bool bg = earned;
+  const Color fgC = earned ? White : Black;
+  const int w = s * 125 / 100, h = s * 170 / 100, x = cx - w / 2, y = cy - h / 2;
+  r.fillRoundedRect(x, y, w, h, 3, fgC);
+  fillTriUp(r, x + w - 1, y + s * 45 / 100, s * 45 / 100, s * 45 / 100, bg);
+  for (int k = 0; k < 3; ++k) r.drawLine(x + 4, y + s * 70 / 100 + k * 5, x + w - 6, y + s * 70 / 100 + k * 5, bg);
+}
+
+static void icClock(GfxRenderer& r, int cx, int cy, int s, bool earned) {
+  const bool fg = !earned;
+  const Color fgC = earned ? White : Black;
+  const int rad = s * 75 / 100;
+  badgeRing(r, cx, cy, rad, 2, fg);
+  r.drawLine(cx, cy, cx, cy - rad * 60 / 100, 2, fg);
+  r.drawLine(cx, cy, cx + rad * 50 / 100, cy, 2, fg);
+  drawDisc(r, cx, cy, 2, fgC);
+}
+
+static void icSun(GfxRenderer& r, int cx, int cy, int s, bool earned) {
+  const bool fg = !earned;
+  const Color fgC = earned ? White : Black;
+  const int rad = s * 50 / 100;
+  drawDisc(r, cx, cy, rad, fgC);
+  const int dirs[8][2] = {{0, -10}, {7, -7}, {10, 0}, {7, 7}, {0, 10}, {-7, 7}, {-10, 0}, {-7, -7}};
+  const int ri = rad + 3, ro = rad + s * 45 / 100;
+  for (int a = 0; a < 8; ++a) {
+    const int dx = dirs[a][0], dy = dirs[a][1];
+    r.drawLine(cx + ri * dx / 10, cy + ri * dy / 10, cx + ro * dx / 10, cy + ro * dy / 10, 2, fg);
+  }
+}
+
+static void icMoon(GfxRenderer& r, int cx, int cy, int s, bool earned) {
+  const Color fgC = earned ? White : Black, bgC = earned ? Black : White;
+  const int rad = s * 80 / 100;
+  drawDisc(r, cx, cy, rad, fgC);
+  drawDisc(r, cx + rad * 55 / 100, cy - rad * 25 / 100, rad, bgC);
+}
+
+void StatsActivity::renderBadges(int panelY, int panelH, int screenW) const {
+  const auto& global = StatsManager.getGlobal();
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pad = metrics.contentSidePadding;
+  const int lh10 = renderer.getLineHeight(UI_10_FONT_ID);
+
+  enum { K_FLAME, K_BOOKS, K_PAGE, K_CLOCK, K_SUN, K_MOON };
+  struct Badge {
+    int kind;
+    uint32_t bit;
+    const char* tier;
+    const char* cap;
+  };
+  const Badge badges[16] = {
+      {K_FLAME, ACH_STREAK_3, "3", tr(STR_STATS_STREAK)},    {K_FLAME, ACH_STREAK_7, "7", tr(STR_STATS_STREAK)},
+      {K_FLAME, ACH_STREAK_30, "30", tr(STR_STATS_STREAK)},  {K_FLAME, ACH_STREAK_100, "100", tr(STR_STATS_STREAK)},
+      {K_BOOKS, ACH_BOOKS_1, "1", tr(STR_STATS_BOOKS)},      {K_BOOKS, ACH_BOOKS_10, "10", tr(STR_STATS_BOOKS)},
+      {K_BOOKS, ACH_BOOKS_25, "25", tr(STR_STATS_BOOKS)},    {K_BOOKS, ACH_BOOKS_50, "50", tr(STR_STATS_BOOKS)},
+      {K_PAGE, ACH_PAGES_1K, "1k", tr(STR_STATS_PAGES)},     {K_PAGE, ACH_PAGES_10K, "10k", tr(STR_STATS_PAGES)},
+      {K_PAGE, ACH_PAGES_100K, "100k", tr(STR_STATS_PAGES)}, {K_CLOCK, ACH_HOURS_10, "10", tr(STR_STATS_HOURS)},
+      {K_CLOCK, ACH_HOURS_50, "50", tr(STR_STATS_HOURS)},    {K_CLOCK, ACH_HOURS_100, "100", tr(STR_STATS_HOURS)},
+      {K_SUN, ACH_EARLY_BIRD, "", tr(STR_STATS_EARLY)},      {K_MOON, ACH_NIGHT_OWL, "", tr(STR_STATS_NIGHT)},
+  };
+
+  int cols = (screenW - 2 * pad) / 100;
+  if (cols < 4) cols = 4;
+  if (cols > 8) cols = 8;
+  const int rows = (16 + cols - 1) / cols;
+  const int colW = (screenW - 2 * pad) / cols;
+  int D = colW - 14;
+  const int byH = (panelH - 12) / rows - 40;
+  if (D > byH) D = byH;
+  if (D > 96) D = 96;
+  if (D < 40) D = 40;
+  const int rowStep = D + 40;
+
+  for (int i = 0; i < 16; ++i) {
+    const int c = i % cols, rr = i / cols;
+    const int cx = pad + c * colW + colW / 2;
+    const int cy = panelY + lh10 + 12 + rr * rowStep + D / 2;
+    const int rad = D / 2;
+    const bool earned = (global.achievementBits & badges[i].bit) != 0;
+    if (earned) {
+      drawDisc(renderer, cx, cy, rad, Black);
+      badgeRing(renderer, cx, cy, rad - 3, 2, false);
+    } else {
+      drawDisc(renderer, cx, cy, rad, White);
+      badgeRing(renderer, cx, cy, rad, 2, true);
+      badgeRing(renderer, cx, cy, rad - 4, 1, true);
+    }
+    const int s = D / 4;
+    const int iconCy = cy - D / 8;
+    switch (badges[i].kind) {
+      case K_FLAME:
+        icFlame(renderer, cx, iconCy, s, earned);
+        break;
+      case K_BOOKS:
+        icBooks(renderer, cx, iconCy, s, earned);
+        break;
+      case K_PAGE:
+        icPage(renderer, cx, iconCy, s, earned);
+        break;
+      case K_CLOCK:
+        icClock(renderer, cx, iconCy, s, earned);
+        break;
+      case K_SUN:
+        icSun(renderer, cx, iconCy, s, earned);
+        break;
+      case K_MOON:
+        icMoon(renderer, cx, iconCy, s, earned);
+        break;
+    }
+    if (badges[i].tier[0] != '\0') {
+      const int tw = renderer.getTextWidth(UI_10_FONT_ID, badges[i].tier, EpdFontFamily::BOLD);
+      renderer.drawText(UI_10_FONT_ID, cx - tw / 2, cy + D / 4 - lh10 / 2, badges[i].tier, !earned,
+                        EpdFontFamily::BOLD);
+    }
+    const int cw = renderer.getTextWidth(UI_10_FONT_ID, badges[i].cap);
+    renderer.drawText(UI_10_FONT_ID, cx - cw / 2, cy - rad - lh10 - 6, badges[i].cap, true);
+  }
+}
+
+static void drawCatSprite(GfxRenderer& r, const CatSprite& s, int x, int y) {
+  const int total = static_cast<int>(s.w) * static_cast<int>(s.h);
+  for (int i = 0; i < total; ++i) {
+    const uint8_t v = (s.data[i >> 2] >> ((i & 3) * 2)) & 0x3;
+    if (v == 0) continue;
+    const int px = x + (i % s.w);
+    const int py = y + (i / s.w);
+    if (v == 1) {
+      r.drawPixel(px, py, true);
+    } else {
+      r.fillRectDither(px, py, 1, 1, LightGray);
+    }
+  }
+}
+
+static void drawPetBar(GfxRenderer& r, int x, int y, int w, int h, const char* label, uint8_t pct) {
+  const int lh = r.getLineHeight(UI_10_FONT_ID);
+  r.drawText(UI_10_FONT_ID, x, y, label, true);
+  char pb[8];
+  snprintf(pb, sizeof(pb), "%u%%", static_cast<unsigned>(pct));
+  const int pw = r.getTextWidth(UI_10_FONT_ID, pb);
+  r.drawText(UI_10_FONT_ID, x + w - pw, y, pb, true);
+  const int by = y + lh + 1;
+  r.drawRect(x, by, w, h, true);
+  int fillW = (w - 2) * pct / 100;
+  if (fillW < 0) fillW = 0;
+  if (fillW > w - 2) fillW = w - 2;
+  if (fillW > 0) r.fillRectDither(x + 1, by + 1, fillW, h - 2, Black);
+}
+
+static const char* petStageName(int stage) {
+  if (stage <= 1) return tr(STR_STATS_PET_KITTEN);
+  if (stage <= 3) return tr(STR_STATS_PET_YOUNG);
+  if (stage <= 4) return tr(STR_STATS_PET_ADULT);
+  return tr(STR_STATS_PET_ELDER);
+}
+
+void StatsActivity::renderPet(int panelY, int panelH, int screenW) const {
+  const auto& global = StatsManager.getGlobal();
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pad = metrics.contentSidePadding;
+  const int lh10 = renderer.getLineHeight(UI_10_FONT_ID);
+  const int lh12 = renderer.getLineHeight(UI_12_FONT_ID);
+  char buf[48];
+
+  const int stage = global.petStage > 5 ? 5 : global.petStage;
+  const int cx = screenW / 2;
+  const CatSprite& cat = (stage < 2) ? kCatKitten : (stage < 4) ? kCatSitting : kCatLoaf;
+  const int blockH = cat.h + 8 + lh12 + 8 + 2 * (lh10 + 19) + 10 + lh10 + 4 + lh12;
+  int catTop = panelY + (panelH - blockH) / 2;
+  if (catTop < panelY + 8) catTop = panelY + 8;
+  drawCatSprite(renderer, cat, cx - cat.w / 2, catTop);
+  int ty = catTop + cat.h + 8;
+
+  snprintf(buf, sizeof(buf), "%s  %s %d", petStageName(stage), tr(STR_STATS_PET_LEVEL), stage);
+  renderer.drawCenteredText(UI_12_FONT_ID, ty, buf, true);
+  ty += lh12 + 8;
+
+  int barW = screenW - 2 * pad;
+  if (barW > 240) barW = 240;
+  const int barX = cx - barW / 2;
+  drawPetBar(renderer, barX, ty, barW, 10, tr(STR_STATS_HUNGER), global.petHunger);
+  ty += lh10 + 1 + 10 + 8;
+  drawPetBar(renderer, barX, ty, barW, 10, tr(STR_STATS_HAPPINESS), global.petHappiness);
+  ty += lh10 + 1 + 10 + 10;
+
+  bool thriving = false;
+  const time_t nowEpoch = time(nullptr);
+  if (stats::epochValid(static_cast<int64_t>(nowEpoch))) {
+    const uint16_t today =
+        stats::dayNumber(static_cast<int64_t>(nowEpoch), stats::utcOffsetSeconds(SETTINGS.clockUtcOffsetQ));
+    thriving = stats::streakAlive(global, today) && global.currentStreakDays > 0;
+  }
+  snprintf(buf, sizeof(buf), "%u XP", static_cast<unsigned>(global.petXp));
+  renderer.drawCenteredText(UI_10_FONT_ID, ty, buf, true);
+  ty += lh10 + 4;
+  renderer.drawCenteredText(UI_12_FONT_ID, ty, thriving ? tr(STR_STATS_PET_THRIVING) : tr(STR_STATS_PET_RESTING), true);
+}
+
+void StatsActivity::renderCalendar(int panelY, int panelH, int screenW) const {
+  static const char* const kMonths[12] = {"January", "February", "March",     "April",   "May",      "June",
+                                          "July",    "August",   "September", "October", "November", "December"};
+  static const char* const kDow[7] = {"M", "T", "W", "T", "F", "S", "S"};
+
+  const auto& global = StatsManager.getGlobal();
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pad = metrics.contentSidePadding;
+  const int lh10 = renderer.getLineHeight(UI_10_FONT_ID);
+  const int lh12 = renderer.getLineHeight(UI_12_FONT_ID);
+
+  const time_t nowEpoch = time(nullptr);
+  const uint16_t today =
+      stats::epochValid(static_cast<int64_t>(nowEpoch))
+          ? stats::dayNumber(static_cast<int64_t>(nowEpoch), stats::utcOffsetSeconds(SETTINGS.clockUtcOffsetQ))
+          : global.lastSyncedDay;
+  if (today == 0) {
+    renderer.drawCenteredText(UI_12_FONT_ID, panelY + panelH / 2, tr(STR_STATS_SYNC_TIME), true);
+    return;
+  }
+
+  const uint16_t goal = global.goalTarget > 0 ? global.goalTarget : STATS_DEFAULT_GOAL_MINUTES;
+  const stats::CivilDate cd = stats::civilFromDays(static_cast<int>(today));
+  const int firstWd = stats::weekdayMon(stats::daysFromCivil(cd.year, cd.month, 1));
+  const int nDays = stats::daysInMonth(cd.year, cd.month);
+  const int rows = (firstWd + nDays + 6) / 7;
+
+  char title[24];
+  snprintf(title, sizeof(title), "%s %d", kMonths[(cd.month - 1) % 12], cd.year);
+  renderer.drawCenteredText(UI_12_FONT_ID, panelY + 4, title, true);
+
+  const int gridX = pad;
+  const int gridY = panelY + 8 + lh12 + 4;
+  const int cw = (screenW - 2 * pad) / 7;
+  const int hdrH = lh10 + 4;
+  int ch = (panelH - (gridY - panelY) - hdrH - lh10 - 14) / (rows > 0 ? rows : 1);
+  if (ch > 72) ch = 72;
+  if (ch < 22) ch = 22;
+
+  for (int c = 0; c < 7; ++c) {
+    const int hx = gridX + c * cw + (cw - renderer.getTextWidth(UI_10_FONT_ID, kDow[c])) / 2;
+    renderer.drawText(UI_10_FONT_ID, hx, gridY, kDow[c], true);
+  }
+
+  const int gy = gridY + hdrH;
+  for (int n = 1; n <= nDays; ++n) {
+    const int posn = firstWd + (n - 1);
+    const int x = gridX + (posn % 7) * cw;
+    const int y = gy + (posn / 7) * ch;
+    const uint16_t dn = static_cast<uint16_t>(stats::daysFromCivil(cd.year, cd.month, n));
+    const uint16_t m = stats::minutesOnDay(global, dn);
+
+    bool numWhite = false;
+    if (m > 0) {
+      const Color shade = (m >= goal) ? Black : (m >= goal / 2) ? DarkGray : LightGray;
+      numWhite = (shade == Black || shade == DarkGray);
+      renderer.fillRoundedRect(x + 2, y + 2, cw - 4, ch - 4, 4, shade);
+    }
+    if (dn == today) {
+      renderer.drawRoundedRect(x + 5, y + 5, cw - 10, ch - 10, 3, 3, !numWhite);
+    }
+    char dnum[4];
+    snprintf(dnum, sizeof(dnum), "%d", n);
+    const int tw = renderer.getTextWidth(UI_10_FONT_ID, dnum);
+    renderer.drawText(UI_10_FONT_ID, x + (cw - tw) / 2, y + (ch - lh10) / 2, dnum, !numWhite);
+  }
+
+  const int ly = gy + rows * ch + 4;
+  const char* lo = "Light reader";
+  const char* hi = "Avid reader";
+  const Color sh[3] = {LightGray, DarkGray, Black};
+  const int swW = 16, swH = lh10 - 2, swGap = 3;
+  const int swatchesW = 3 * swW + 2 * swGap;
+  const int loW = renderer.getTextWidth(UI_10_FONT_ID, lo);
+  const int hiW = renderer.getTextWidth(UI_10_FONT_ID, hi);
+  const int totalW = loW + 10 + swatchesW + 10 + hiW;
+  int lx = (screenW - totalW) / 2;
+  if (lx < pad) lx = pad;
+  renderer.drawText(UI_10_FONT_ID, lx, ly, lo, true);
+  lx += loW + 10;
+  const int swY = ly + (lh10 - swH) / 2;
+  for (int i = 0; i < 3; ++i) {
+    renderer.fillRoundedRect(lx, swY, swW, swH, 2, sh[i]);
+    lx += swW + swGap;
+  }
+  lx += 10 - swGap;
+  renderer.drawText(UI_10_FONT_ID, lx, ly, hi, true);
+}
+
+void StatsActivity::renderWrapped(int panelY, int panelH, int screenW) const {
+  (void)screenW;
+  const auto& global = StatsManager.getGlobal();
+  const int lh12 = renderer.getLineHeight(UI_12_FONT_ID);
+  const int lh10 = renderer.getLineHeight(UI_10_FONT_ID);
+
+  struct WrapStat {
+    char value[24];
+    const char* label;
+  };
+  WrapStat items[5];
+  StatsActivity::formatDuration(items[0].value, sizeof(items[0].value), global.totalReadingMs);
+  items[0].label = tr(STR_STATS_HOURS_READ);
+  snprintf(items[1].value, sizeof(items[1].value), "%u", static_cast<unsigned>(global.totalPagesLifetime));
+  items[1].label = tr(STR_STATS_PAGES_TURNED);
+  snprintf(items[2].value, sizeof(items[2].value), "%u", static_cast<unsigned>(global.totalBooksFinished));
+  items[2].label = tr(STR_FINISHED_BOOKS);
+  snprintf(items[3].value, sizeof(items[3].value), "%u", static_cast<unsigned>(global.longestStreakDays));
+  items[3].label = tr(STR_STATS_LONGEST_STREAK);
+  snprintf(items[4].value, sizeof(items[4].value), "%u", static_cast<unsigned>(global.lifetimeActiveDays));
+  items[4].label = tr(STR_STATS_DAYS_READ);
+
+  const int blockH = lh12 + lh10 + 14;
+  int y = panelY + (panelH - 5 * blockH) / 2;
+  if (y < panelY + 6) y = panelY + 6;
+  for (int i = 0; i < 5; ++i) {
+    renderer.drawCenteredText(UI_12_FONT_ID, y, items[i].value, true, EpdFontFamily::BOLD);
+    renderer.drawCenteredText(UI_10_FONT_ID, y + lh12, items[i].label, true);
+    y += blockH;
+  }
 }
 
 // -----------------------------------------------------------------------

@@ -174,18 +174,24 @@ void formatTimeApprox(char* buf, size_t len, uint64_t ms) {
 // of bundling more bitmaps for those.
 
 static void drawStatsIcon(const GfxRenderer& renderer, int x, int y, int size) {
-  // Three vertical bars of increasing height (classic bar-chart icon).
-  const int barW = (size - 4) / 3;
-  const int gap = 1;
+  // Ascending bars with a rising trend line + arrowhead (an analytics glyph).
   const int baseY = y + size - 2;
-  const int h1 = size / 3;
-  const int h2 = (size * 2) / 3;
-  const int h3 = size - 2;
-  // Baseline
+  const int barW = 5;
+  const int gap = 5;
+  const int bx0 = x + 2;
+  const int barH[3] = {size / 4, (size * 9) / 20, (size * 13) / 20};
+  for (int i = 0; i < 3; ++i) {
+    const int bx = bx0 + i * (barW + gap);
+    renderer.fillRect(bx, baseY - barH[i], barW, barH[i], true);
+  }
   renderer.drawLine(x, baseY, x + size, baseY, 1, true);
-  renderer.fillRect(x + 1, baseY - h1, barW, h1, true);
-  renderer.fillRect(x + 1 + barW + gap, baseY - h2, barW, h2, true);
-  renderer.fillRect(x + 1 + 2 * (barW + gap), baseY - h3, barW, h3, true);
+  const int sx = bx0 + barW / 2;
+  const int sy = baseY - barH[0] - 3;
+  const int ex = bx0 + 2 * (barW + gap) + barW / 2;
+  const int ey = baseY - barH[2] - 5;
+  renderer.drawLine(sx, sy, ex, ey, 2, true);
+  renderer.drawLine(ex, ey, ex - 5, ey, 2, true);
+  renderer.drawLine(ex, ey, ex, ey + 5, 2, true);
 }
 
 static void drawTransferIcon(const GfxRenderer& renderer, int x, int y, int size) {

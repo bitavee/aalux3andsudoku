@@ -6,6 +6,9 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <string>
+#include <vector>
 
 #include "activities/ActivityManager.h"
 #include "components/HomeRenderer.h"  // kThumbnailCoverHeight — shared with stats list, home, groups
@@ -13,6 +16,18 @@
 #include "components/themes/BaseTheme.h"  // for GUI macro and drawButtonHints
 #include "fontIds.h"
 #include "stats/ReadingStatsManager.h"
+
+namespace {
+void fmtDuration(uint32_t ms, char* buf, size_t n) {
+  const uint32_t h = ms / 3600000UL;
+  const uint32_t m = (ms % 3600000UL) / 60000UL;
+  if (h > 0) {
+    std::snprintf(buf, n, "%uh %um", h, m);
+  } else {
+    std::snprintf(buf, n, "%um", m);
+  }
+}
+}  // namespace
 
 DetailedStatsActivity::DetailedStatsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, uint8_t bookIndex)
     : Activity("DetailedStats", renderer, mappedInput), _bookIndex(bookIndex) {}
@@ -36,9 +51,9 @@ void DetailedStatsActivity::render(RenderLock&& lock) {
   renderer.clearScreen();
   renderDetailedGrid();
 
-  // Bottom button bar (Only Back button is functional)
+  // Bottom button bar: only Back is functional, so draw just that glyph in its fixed slot.
   // fixed: using a GUI macro
-  GUI.drawButtonHintsGlyphs(renderer);
+  GUI.drawButtonHintsGlyphs(renderer, BaseTheme::ButtonHintGlyphSet::Navigation, 0b0001);
 
   renderer.displayBuffer();
 }
@@ -46,175 +61,179 @@ void DetailedStatsActivity::render(RenderLock&& lock) {
 void DetailedStatsActivity::renderDetailedGrid() const {
   const auto& book = StatsManager.getBook(_bookIndex);
   const auto& global = StatsManager.getGlobal();
-  char buf[64];
+  char buf[48];
 
-  // Screen dimensions: 480x800 Portrait
-  const int screenW = 480;
-  const int midY = 280;
-  const int botY = 450;
-  const int gridBottom = 640;
+  const int W = renderer.getScreenWidth();
+  const int H = renderer.getScreenHeight();
+  int mt, mr, mb, ml;
+  renderer.getOrientedViewableTRBL(&mt, &mr, &mb, &ml);
+  const int cx = ml;
+  const int cw = W - ml - mr;
+  const int top = mt;
+  const int bottom = H - mb - BaseMetrics::values.buttonHintsHeight;
+  const int ch = bottom - top;
 
-  // -- 1ST SECTION: Top Left - Cover --
-  // Adjusted for 480px width: Cover takes roughly 40% of width
-  const int coverPad = 15;
-  const int coverW = 180;
-  const int coverH = 240;
-  const int coverX = coverPad;
-  const int coverY = coverPad;
+  const int lh12 = renderer.getLineHeight(UI_12_FONT_ID);
+  const int lh10 = renderer.getLineHeight(UI_10_FONT_ID);
+  const int pad = 12;
 
-  // Read the same canonical thumb the home, group, and stats-list pages read,
-  // and dispatch by is1Bit() so 1-bit thumbs fill the slot exactly (no white
-  // right-edge from drawBitmap's aspect-fit). Mirrors HomeRenderer::drawCover.
+  const int coverH = ch * 22 / 100;
+  const int coverW = coverH * 3 / 4;
+  const int coverX = cx;
+  const int coverY = top;
+  drawCover(book, coverX, coverY, coverW, coverH);
+
+  const int infoX = coverX + coverW + pad;
+  const int infoW = cx + cw - infoX;
+  int yy = top + 2;
+  const std::vector<std::string> titleLines =
+      renderer.wrappedText(UI_12_FONT_ID, book.title, infoW, 3, EpdFontFamily::BOLD);
+  for (const std::string& line : titleLines) {
+    renderer.drawText(UI_12_FONT_ID, infoX, yy, line.c_str(), true, EpdFontFamily::BOLD);
+    yy += lh12;
+  }
+  if (book.author[0] != '\0') {
+    const std::string author = renderer.truncatedText(UI_10_FONT_ID, book.author, infoW);
+    renderer.drawText(UI_10_FONT_ID, infoX, yy, author.c_str(), true);
+    yy += lh10;
+  }
+  yy += 6;
+  const int barH = 10;
+  renderer.drawRect(infoX, yy, infoW, barH, true);
+  const int fillW = (infoW - 2) * book.progressPercent / 100;
+  if (fillW > 0) {
+    renderer.fillRect(infoX + 1, yy + 1, fillW, barH - 2, true);
+  }
+  yy += barH + 4;
+  std::snprintf(buf, sizeof(buf), "%u%% complete", book.progressPercent);
+  renderer.drawText(UI_10_FONT_ID, infoX, yy, buf, true);
+  yy += lh10;
+
+  const int headerBottom = ((coverY + coverH) > yy ? (coverY + coverH) : yy) + pad;
+  renderer.drawLine(cx, headerBottom - pad / 2, cx + cw, headerBottom - pad / 2, true);
+
+  const float totMin = static_cast<float>(book.totalReadingMs) / 60000.0f;
+  const int cols = 2;
+  const int rows = 3;
+  const int cellW = cw / cols;
+  const int cellH = lh12 + lh10 + pad;
+  const int gridTop = headerBottom;
+
+  for (int i = 0; i < 6; ++i) {
+    char value[24];
+    char label[24];
+    switch (i) {
+      case 0:
+        fmtDuration(book.totalReadingMs, value, sizeof(value));
+        std::snprintf(label, sizeof(label), "time spent");
+        break;
+      case 1:
+        std::snprintf(value, sizeof(value), "%u", book.sessionCount);
+        std::snprintf(label, sizeof(label), "sessions");
+        break;
+      case 2: {
+        const float avg = (book.sessionCount > 0) ? totMin / static_cast<float>(book.sessionCount) : 0.0f;
+        std::snprintf(value, sizeof(value), "%.1f", avg);
+        std::snprintf(label, sizeof(label), "avg min/session");
+        break;
+      }
+      case 3: {
+        const float ppm = (totMin > 0.05f) ? static_cast<float>(book.totalPagesRead) / totMin : 0.0f;
+        std::snprintf(value, sizeof(value), "%.2f", ppm);
+        std::snprintf(label, sizeof(label), "avg pages/min");
+        break;
+      }
+      case 4:
+        if (book.progressPercent == 0 || book.totalReadingMs == 0) {
+          std::snprintf(value, sizeof(value), "--");
+        } else if (book.progressPercent >= 100) {
+          std::snprintf(value, sizeof(value), "Done");
+        } else {
+          const uint64_t msPerPct = static_cast<uint64_t>(book.totalReadingMs) / book.progressPercent;
+          const uint64_t remMs = msPerPct * (100u - book.progressPercent);
+          const uint32_t rh = static_cast<uint32_t>(remMs / 3600000ULL);
+          const uint32_t rm = static_cast<uint32_t>((remMs % 3600000ULL) / 60000ULL);
+          if (rh > 0) {
+            std::snprintf(value, sizeof(value), "~%uh %um", rh, rm);
+          } else {
+            std::snprintf(value, sizeof(value), "~%um", rm);
+          }
+        }
+        std::snprintf(label, sizeof(label), "time to finish");
+        break;
+      default:
+        std::snprintf(value, sizeof(value), "%u min", static_cast<unsigned>(book.lastSessionMs / 60000UL));
+        std::snprintf(label, sizeof(label), "last session");
+        break;
+    }
+    const int gcol = i % cols;
+    const int grow = i / cols;
+    const int gxx = cx + gcol * cellW;
+    const int gyy = gridTop + grow * cellH;
+    const int vw = renderer.getTextWidth(UI_12_FONT_ID, value, EpdFontFamily::BOLD);
+    renderer.drawText(UI_12_FONT_ID, gxx + (cellW - vw) / 2, gyy, value, true, EpdFontFamily::BOLD);
+    const int lw = renderer.getTextWidth(UI_10_FONT_ID, label);
+    renderer.drawText(UI_10_FONT_ID, gxx + (cellW - lw) / 2, gyy + lh12, label, true);
+  }
+  const int gridBottom = gridTop + rows * cellH;
+
+  renderer.drawLine(cx, gridBottom + pad / 2, cx + cw, gridBottom + pad / 2, true);
+  const int sy = gridBottom + pad;
+  renderer.drawText(UI_10_FONT_ID, cx, sy, "Reading speed (pages/hr)", true);
+
+  uint16_t pph[4];
+  const uint8_t n = (book.speedCount > 4) ? 4 : book.speedCount;
+  for (uint8_t i = 0; i < n; ++i) {
+    const uint8_t idx = static_cast<uint8_t>((book.speedHead + 4 - n + i) % 4);
+    pph[i] = book.speedSamples[idx].pagesPerHour;
+  }
+  if (n >= 2) {
+    const uint16_t tol = static_cast<uint16_t>(pph[0] / 12 + 1);
+    const char* trend = (pph[n - 1] > pph[0] + tol) ? "faster" : (pph[n - 1] + tol < pph[0]) ? "slower" : "steady";
+    const int tw = renderer.getTextWidth(UI_10_FONT_ID, trend);
+    renderer.drawText(UI_10_FONT_ID, cx + cw - tw, sy, trend, true);
+    uint16_t mx = 1;
+    for (uint8_t i = 0; i < n; ++i) {
+      if (pph[i] > mx) mx = pph[i];
+    }
+    const int barsY = sy + lh10 + 4;
+    const int barsH = 30;
+    const int slot = cw / n;
+    for (uint8_t i = 0; i < n; ++i) {
+      const int bh = static_cast<int>(static_cast<uint32_t>(pph[i]) * barsH / mx);
+      const int bw = slot * 6 / 10;
+      const int bxx = cx + i * slot + (slot - bw) / 2;
+      renderer.fillRect(bxx, barsY + (barsH - bh), bw, bh, true);
+    }
+  } else {
+    renderer.drawText(UI_10_FONT_ID, cx, sy + lh10 + 4, "Not enough data yet", true);
+  }
+
+  char allTime[24];
+  fmtDuration(global.totalReadingMs, allTime, sizeof(allTime));
+  std::snprintf(buf, sizeof(buf), "All time: %s", allTime);
+  renderer.drawText(UI_10_FONT_ID, cx, bottom - lh10, buf, true);
+}
+
+void DetailedStatsActivity::drawCover(const BookStatEntry& book, int x, int y, int w, int h) const {
   const std::string thumbPath =
       UITheme::getCoverThumbPath(std::string(book.thumbBmpPath), HomeRenderer::kThumbnailCoverHeight);
-  bool drewCover = false;
   FsFile f;
   if (Storage.openFileForRead("STATS", thumbPath.c_str(), f)) {
     Bitmap bmp(f, false);
     if (bmp.parseHeaders() == BmpReaderError::Ok) {
       if (bmp.is1Bit()) {
-        renderer.drawBitmapStretched1Bit(bmp, coverX, coverY, coverW, coverH);
+        renderer.drawBitmapStretched1Bit(bmp, x, y, w, h);
       } else {
-        renderer.drawBitmap(bmp, coverX, coverY, coverW, coverH);
+        renderer.drawBitmap(bmp, x, y, w, h);
       }
-      renderer.roundCoverCorners(coverX, coverY, coverW, coverH, HomeRenderer::kCoverCornerRadius);
-      drewCover = true;
+      renderer.roundCoverCorners(x, y, w, h, HomeRenderer::kCoverCornerRadius);
+      f.close();
+      return;
     }
     f.close();
   }
-  if (!drewCover) {
-    drawCoverPlaceholder(coverX, coverY, coverW, coverH, book.title);
-  }
-
-  // -- 2ND SECTION: Top Right - Book info --
-  const int textX = coverX + coverW + 15;
-  int textY = coverY + 10;
-
-  // --- Optimized 3-Line title logic for Detailed View ---
-  // Increased BREAK_AT to 19 to utilize the full 480px width (approx 255px for text)
-  static constexpr size_t BREAK_AT = 19;
-  size_t titleLen = strlen(book.title);
-
-  if (titleLen > BREAK_AT) {
-    // Line 1: Calculate first split
-    char line1[32];
-    size_t split1 = BREAK_AT;
-    for (size_t i = BREAK_AT; i > 5; --i) {
-      if (book.title[i] == ' ' || book.title[i] == ':' || book.title[i] == '|') {
-        split1 = i + 1;
-        break;
-      }
-    }
-    snprintf(line1, sizeof(line1), "%.*s", (int)split1, book.title);
-    renderer.drawText(UI_12_FONT_ID, textX, textY, line1, true, EpdFontFamily::BOLD);
-
-    const char* remaining1 = book.title + split1;
-    size_t rem1Len = strlen(remaining1);
-
-    if (rem1Len > BREAK_AT) {
-      // Line 2: Calculate second split from what remains
-      char line2[32];
-      size_t split2 = BREAK_AT;
-      for (size_t i = BREAK_AT; i > 5; --i) {
-        if (remaining1[i] == ' ' || remaining1[i] == ':' || remaining1[i] == '|') {
-          split2 = i + 1;
-          break;
-        }
-      }
-      snprintf(line2, sizeof(line2), "%.*s", (int)split2, remaining1);
-      renderer.drawText(UI_12_FONT_ID, textX, textY + 32, line2, true, EpdFontFamily::BOLD);
-
-      // Line 3: Final segment (with safe truncation for extremely long titles)
-      const char* remaining2 = remaining1 + split2;
-      if (strlen(remaining2) > 22) {
-        char line3Trunc[32];
-        strncpy(line3Trunc, remaining2, 19);
-        line3Trunc[19] = '\0';
-        strcat(line3Trunc, "...");
-        renderer.drawText(UI_12_FONT_ID, textX, textY + 64, line3Trunc, true, EpdFontFamily::BOLD);
-      } else {
-        renderer.drawText(UI_12_FONT_ID, textX, textY + 64, remaining2, true, EpdFontFamily::BOLD);
-      }
-      // Metadata shifted down to accommodate 3 title lines
-      textY += 105;
-    } else {
-      // Only 2 lines needed (second line is shorter than BREAK_AT)
-      renderer.drawText(UI_12_FONT_ID, textX, textY + 32, remaining1, true, EpdFontFamily::BOLD);
-      textY += 85;
-    }
-  } else {
-    // Simple 1-line title
-    renderer.drawText(UI_12_FONT_ID, textX, textY, book.title, true, EpdFontFamily::BOLD);
-    textY += 70;
-  }
-
-  // --- Metadata Rendering (Author, Time, Sessions) ---
-  // Author
-  renderer.drawText(UI_12_FONT_ID, textX, textY, book.author, true, EpdFontFamily::REGULAR);
-  textY += 60;
-
-  // Time spent
-  const uint32_t hours = book.totalReadingMs / 3600000;
-  const uint32_t mins = (book.totalReadingMs % 3600000) / 60000;
-  snprintf(buf, sizeof(buf), "%uh %um", hours, mins);
-  renderer.drawText(UI_12_FONT_ID, textX, textY, buf, true);
-  textY += 30;
-
-  // Sessions
-  snprintf(buf, sizeof(buf), "Sessions: %u", book.sessionCount);
-  renderer.drawText(UI_12_FONT_ID, textX, textY, buf, true);
-
-  // -- Draw Horizontal Grid Lines --
-  renderer.drawLine(0, midY, screenW, midY, 4, true);
-  renderer.drawLine(0, botY, screenW, botY, 4, true);
-  renderer.drawLine(0, gridBottom - 20, screenW, gridBottom - 20, 4, true);
-
-  // Vertical divider
-  renderer.drawLine(screenW / 2, midY + 35, screenW / 2, botY, 3, true);
-  renderer.drawLine(screenW / 2, botY + 35, screenW / 2, gridBottom - 20, 3, true);
-
-  // -- Section Headers (Visual Separation) --
-  // "This Book" header placed in center just below the first horizontal line
-  renderer.drawText(UI_10_FONT_ID, 197, midY + 8, "This Book", true, EpdFontFamily::BOLD);
-
-  // "All Time" header placed in center just below the second horizontal line
-  renderer.drawText(UI_10_FONT_ID, 202, botY + 8, " All Time", true, EpdFontFamily::BOLD);
-
-  // -- Floating Point Calculations for Precision --
-  const float totalMinsFloat = static_cast<float>(book.totalReadingMs) / 60000.0f;
-  float avgMinSess = (book.sessionCount > 0) ? (totalMinsFloat / static_cast<float>(book.sessionCount)) : 0.0f;
-
-  // Avg Pages / Min (2 decimal places)
-  float avgPagesMin = (totalMinsFloat > 0.05f) ? (static_cast<float>(book.totalPagesRead) / totalMinsFloat) : 0.0f;
-
-  // -- Render Bottom Grid with Precision --
-
-  // Row 1: Avg Min/Sess | Avg Pages/Min
-  snprintf(buf, sizeof(buf), "%.1f", avgMinSess);
-  renderer.drawText(UI_12_FONT_ID, 100, botY - 100, buf, true, EpdFontFamily::BOLD);
-  renderer.drawText(UI_10_FONT_ID, 30, botY - 60, "  Avg min/session", true);
-
-  snprintf(buf, sizeof(buf), "%.2f", avgPagesMin);
-  renderer.drawText(UI_12_FONT_ID, 340, botY - 100, buf, true, EpdFontFamily::BOLD);
-  renderer.drawText(UI_10_FONT_ID, 270, botY - 60, "   Avg pages/min", true);
-
-  // -- Section: Book Milestones (Bottom Grid) --
-  const int botYVal = 520;
-  const int botYLabel = 560;
-
-  // 1. Column: Last Session duration
-  char lastSessBuf[32];
-  snprintf(lastSessBuf, sizeof(lastSessBuf), "%u min", static_cast<unsigned>(book.lastSessionMs / 60000));
-  renderer.drawText(UI_12_FONT_ID, 90, botYVal, lastSessBuf, true, EpdFontFamily::BOLD);
-  renderer.drawText(UI_10_FONT_ID, 20, botYLabel, "Last session this book", true);
-
-  // 2. Column: Total Reading Time for this specific book
-  char globalTotalBuf[32];
-  uint32_t bh = global.totalReadingMs / 3600000;
-  uint32_t bm = (global.totalReadingMs % 3600000) / 60000;
-  snprintf(globalTotalBuf, sizeof(globalTotalBuf), "%uh %02um", bh, bm);
-  renderer.drawText(UI_12_FONT_ID, 310, botYVal, globalTotalBuf, true, EpdFontFamily::BOLD);
-  renderer.drawText(UI_10_FONT_ID, 290, botYLabel, "Total time read", true);
+  drawCoverPlaceholder(x, y, w, h, book.title);
 }
 
 void DetailedStatsActivity::drawCoverPlaceholder(int x, int y, int w, int h, const char* /*title*/) const {

@@ -7,47 +7,10 @@
 #include <cstring>
 
 #include "Logging.h"
+#include "stats/StatsTypes.h"
 
-static constexpr uint8_t STATS_MAX_BOOK_ENTRIES = 9;
 static constexpr uint32_t STATS_MIN_SESSION_MS = 3UL * 60UL * 1000UL;
-static constexpr uint8_t STATS_SESSION_RING_SIZE = 7;
-static constexpr uint8_t STATS_FILE_VERSION = 6;  // UPDATE: bumped from 5 to 6
 static constexpr const char* STATS_FILE_PATH = "/.crosspoint/stats.bin";
-
-// -----------------------------------------------------------------------
-// Per-book stats record
-// -----------------------------------------------------------------------
-struct BookStatEntry {
-  char cacheKey[64];       // epub->getCachePath()
-  char title[64];          // epub->getTitle()
-  char author[64];         // epub->getAuthor()
-  char bookPath[128];      // epub->getPath()
-  char thumbBmpPath[128];  // epub->getThumbBmpPath()
-  uint32_t totalReadingMs;
-  uint32_t sessionCount;
-  uint32_t totalPagesRead;
-  uint32_t lastSessionMs;  // NEW: Duration of the most recent reading session
-  uint8_t progressPercent;
-  uint8_t _pad[3];  // Padding for 4-byte RISC-V alignment
-};
-// Size: 464 (v5) + 4 (lastSessionMs) = 468 bytes
-static_assert(sizeof(BookStatEntry) == 468, "BookStatEntry layout changed — bump STATS_FILE_VERSION");
-
-// -----------------------------------------------------------------------
-// Global stats record
-// -----------------------------------------------------------------------
-struct GlobalStats {
-  uint8_t version;
-  uint8_t sessionRingHead;
-  uint8_t sessionRingCount;
-  uint8_t bookCount;
-  uint16_t totalBooksFinished;  // NEW: Total books finished on this device
-  uint8_t _pad[2];              // NEW: RISC-V 4-byte padding
-  uint32_t totalReadingMs;
-  uint32_t totalSessionCount;
-  uint32_t sessionRing[STATS_SESSION_RING_SIZE];
-};
-static_assert(sizeof(GlobalStats) == 44, "GlobalStats layout changed — bump STATS_FILE_VERSION");
 
 // -----------------------------------------------------------------------
 // ReadingStatsManager singleton
@@ -78,6 +41,9 @@ class ReadingStatsManager {
   bool removeBook(uint8_t index);
   uint32_t getLast7SessionsMs() const;
   uint8_t getLast7SessionCount() const { return global.sessionRingCount; }
+
+  void reset();
+  void setDailyGoalMinutes(uint16_t minutes);
 
  private:
   ReadingStatsManager() = default;

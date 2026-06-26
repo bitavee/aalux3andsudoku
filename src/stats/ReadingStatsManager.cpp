@@ -3,6 +3,9 @@
 #include <HalStorage.h>
 
 #include <cstring>
+#include <ctime>
+
+#include "CrossPointSettings.h"
 
 bool ReadingStatsManager::load() {
   FsFile f;
@@ -10,6 +13,7 @@ bool ReadingStatsManager::load() {
     LOG_DBG("STATS", "No stats file found, starting fresh");
     global = GlobalStats{};
     global.version = STATS_FILE_VERSION;
+    global.goalTarget = STATS_DEFAULT_GOAL_MINUTES;
     memset(books, 0, sizeof(books));
     return true;
   }
@@ -21,7 +25,9 @@ bool ReadingStatsManager::load() {
   if (fileVersion < STATS_FILE_VERSION) {
     LOG_INF("STATS", "Migrating stats %d -> %d", fileVersion, STATS_FILE_VERSION);
 
-    // GlobalStats (v4=40, v5=44, v6=44). v5 and v6 match in size.
+    global = GlobalStats{};
+    // GlobalStats (v4=40, v5=44, v6=44). v5 and v6 match in size; the v7 tail
+    // (day ring, streak, goal, pet, speed) stays zero from the value-init above.
     size_t globalSize = (fileVersion == 4) ? 40 : 44;
     f.read(&global, globalSize);
     global.version = STATS_FILE_VERSION;
@@ -35,13 +41,18 @@ bool ReadingStatsManager::load() {
         // lastSessionMs is new in v6 at this offset, so we skip reading it from v5 file
         // and read the remaining v5 data (progressPercent + pads) into the new offset
         f.read(&books[i].progressPercent, 4);
+      } else if (fileVersion == 6) {
+        // v6 entry was 468 bytes; v7 keeps that exact prefix and appends a zeroed tail.
+        f.read(&books[i], 468);
       } else {
         // v4 migration (396 bytes)
         f.read(&books[i], 396);
       }
     }
+    if (global.goalTarget == 0) global.goalTarget = STATS_DEFAULT_GOAL_MINUTES;
+    stats::evaluateAchievements(global, -1);
     f.close();
-    save();  // Force clean save in V6 format
+    save();  // Force clean save in V7 format
     return true;
   }
 
@@ -179,11 +190,44 @@ void ReadingStatsManager::endSession(uint8_t progressPercent, uint32_t sessionPa
 
   global.totalReadingMs += elapsedMs;
   global.totalSessionCount++;
+  global.totalPagesLifetime += sessionPagesTurned;
   global.sessionRing[global.sessionRingHead] = elapsedMs;
   global.sessionRingHead = (global.sessionRingHead + 1) % STATS_SESSION_RING_SIZE;
   if (global.sessionRingCount < STATS_SESSION_RING_SIZE) {
     global.sessionRingCount++;
   }
+
+  // Per-day history, streak and goal only accrue when a real wall-clock day is
+  // known. The X4 has no RTC, so time() is only valid after one NTP sync;
+  // epochValid() gates on that. Reuse the long-session gate so a brief peek
+  // does not register a reading day.
+  const int64_t nowEpoch = static_cast<int64_t>(time(nullptr));
+  if (longEnoughForLastSession && stats::epochValid(nowEpoch)) {
+    const uint16_t today = stats::dayNumber(nowEpoch, stats::utcOffsetSeconds(SETTINGS.clockUtcOffsetQ));
+    const uint16_t minutes = static_cast<uint16_t>(elapsedMs / 60000UL);
+    stats::updatePet(global, today);
+    stats::recordReadingDay(global, today, minutes);
+    if (sessionBookIndex < global.bookCount) {
+      BookStatEntry& b = books[sessionBookIndex];
+      b.lastReadDay = today;
+      if (sessionPagesTurned > 0 && elapsedMs > 0) {
+        const uint32_t pph = static_cast<uint32_t>(sessionPagesTurned) * 3600000UL / elapsedMs;
+        b.speedSamples[b.speedHead % 4].pagesPerHour = pph > 0xFFFFu ? 0xFFFFu : static_cast<uint16_t>(pph);
+        b.speedSamples[b.speedHead % 4].minutesInSession = minutes;
+        b.speedHead = static_cast<uint8_t>((b.speedHead + 1) % 4);
+        if (b.speedCount < 4) b.speedCount++;
+      }
+    }
+  }
+
+  int sessionEndHour = -1;
+  if (stats::epochValid(nowEpoch)) {
+    const int offset = stats::utcOffsetSeconds(SETTINGS.clockUtcOffsetQ);
+    const int64_t localEpoch = nowEpoch + offset;
+    sessionEndHour = static_cast<int>((localEpoch % 86400) / 3600);
+    global.lastSyncedDay = stats::dayNumber(nowEpoch, offset);
+  }
+  stats::evaluateAchievements(global, sessionEndHour);
 
   sortByProgress();
   save();
@@ -216,4 +260,19 @@ uint32_t ReadingStatsManager::getLast7SessionsMs() const {
     total += global.sessionRing[i];
   }
   return total;
+}
+
+void ReadingStatsManager::reset() {
+  global = GlobalStats{};
+  global.version = STATS_FILE_VERSION;
+  global.goalTarget = STATS_DEFAULT_GOAL_MINUTES;
+  memset(books, 0, sizeof(books));
+  sessionActive = false;
+  sessionBookIndex = 0xFF;
+  save();
+}
+
+void ReadingStatsManager::setDailyGoalMinutes(uint16_t minutes) {
+  global.goalTarget = minutes;
+  save();
 }
