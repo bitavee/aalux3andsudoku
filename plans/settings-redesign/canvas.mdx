@@ -1,0 +1,181 @@
+<DesignBoard title="Settings Redesign — Refined Lyra" version={2}>
+<Section id="s-main" title="Main Settings (full catalogue)">
+<Artboard id="a-main-reader" label={"Settings · Reader tab — grouped, with value steppers"} surface="mobile">
+<Screen surface="mobile" html={`<div style="display:flex;flex-direction:column;height:100%;box-sizing:border-box;font-size:13px">
+  <div style="display:flex;align-items:center;gap:8px;padding:14px 16px 10px">
+    <strong style="font-size:17px;flex:1">Settings</strong>
+    <small class="wf-muted">82%</small>
+    <span style="width:26px;height:13px;border:1.6px solid var(--wf-ink);border-radius:2px"></span>
+  </div>
+  <div style="height:3px;background:var(--wf-ink);margin:0 0 8px"></div>
+  <div style="display:flex;gap:6px;padding:0 16px 10px;white-space:nowrap;border-bottom:1.4px solid var(--wf-line)">
+    <span class="wf-pill accent">Reader</span>
+    <span class="wf-pill">Display</span>
+    <span class="wf-pill">Controls</span>
+    <span class="wf-pill">System</span>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;gap:1px;padding:10px 14px 6px;position:relative">
+    <small class="wf-muted" style="letter-spacing:1.5px;padding:2px 4px 4px">TEXT</small>
+    <div style="display:flex;align-items:center;padding:9px 12px"><span style="flex:1">Font family</span><small class="wf-muted">Bookerly</small></div>
+    <div style="display:flex;align-items:center;padding:9px 12px;border-radius:9px;background:var(--wf-accent-soft)"><span style="flex:1">Font size</span><span class="wf-pill accent">&#8249;&nbsp;Medium&nbsp;&#8250;</span></div>
+    <div style="display:flex;align-items:center;padding:9px 12px"><span style="flex:1">Line spacing</span><small class="wf-muted">Normal</small></div>
+    <div style="display:flex;align-items:center;padding:9px 12px"><span style="flex:1">Alignment</span><small class="wf-muted">Justify</small></div>
+    <small class="wf-muted" style="letter-spacing:1.5px;padding:8px 4px 4px">LAYOUT</small>
+    <div style="display:flex;align-items:center;padding:9px 12px"><span style="flex:1">Screen margin</span><small class="wf-muted">20 px</small></div>
+    <div style="display:flex;align-items:center;padding:9px 12px"><span style="flex:1">Extra paragraph spacing</span><span style="display:inline-flex;align-items:center;justify-content:flex-end;width:36px;height:20px;border-radius:999px;background:var(--wf-ink);padding:2px;box-sizing:border-box"><span style="width:16px;height:16px;border-radius:999px;background:var(--wf-paper)"></span></span></div>
+    <div style="position:absolute;top:14px;bottom:10px;right:6px;width:3px;background:var(--wf-line)"><div style="position:absolute;top:0;width:3px;height:46%;background:var(--wf-ink)"></div></div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-around;padding:10px 24px;border-top:1.4px solid var(--wf-line);color:var(--wf-muted);font-size:15px">
+    <span>&#9664;</span><span>&#9679;</span><span>&#9650;</span><span>&#9660;</span>
+  </div>
+</div>`} />
+</Artboard>
+
+<Artboard id="a-main-system" label={"Settings · System tab — actions vs values"} surface="mobile">
+<Screen surface="mobile" html={`<div style="display:flex;flex-direction:column;height:100%;box-sizing:border-box;font-size:13px">
+  <div style="display:flex;align-items:center;gap:8px;padding:14px 16px 10px">
+    <strong style="font-size:17px;flex:1">Settings</strong>
+    <small class="wf-muted">82%</small>
+    <span style="width:26px;height:13px;border:1.6px solid var(--wf-ink);border-radius:2px"></span>
+  </div>
+  <div style="height:3px;background:var(--wf-ink);margin:0 0 8px"></div>
+  <div style="display:flex;gap:6px;padding:0 16px 10px;white-space:nowrap;border-bottom:1.4px solid var(--wf-line)">
+    <span class="wf-pill">Reader</span>
+    <span class="wf-pill">Display</span>
+    <span class="wf-pill">Controls</span>
+    <span class="wf-pill accent">System</span>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;gap:1px;padding:10px 14px 6px">
+    <div style="display:flex;align-items:center;padding:9px 12px"><span style="flex:1">Time to sleep</span><small class="wf-muted">5 min</small></div>
+    <div style="display:flex;align-items:center;padding:9px 12px"><span style="flex:1">Show hidden files</span><span style="display:inline-flex;align-items:center;justify-content:flex-start;width:36px;height:20px;border-radius:999px;border:1.6px solid var(--wf-line);padding:2px;box-sizing:border-box"><span style="width:16px;height:16px;border-radius:999px;background:var(--wf-line)"></span></span></div>
+    <small class="wf-muted" style="letter-spacing:1.5px;padding:8px 4px 4px">CONNECTIVITY &amp; TOOLS</small>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--wf-accent-soft)"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft);border:1.6px solid var(--wf-ink)"></span><span style="flex:1">Wi-Fi networks</span><span data-icon="chevronRight" class="wf-muted"></span></div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft)"></span><span style="flex:1">File transfer</span><span data-icon="chevronRight" class="wf-muted"></span></div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft)"></span><span style="flex:1">KOReader sync</span><span data-icon="chevronRight" class="wf-muted"></span></div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft)"></span><span style="flex:1">Clear reading cache</span><span data-icon="chevronRight" class="wf-muted"></span></div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft)"></span><span style="flex:1">Check for updates</span><span data-icon="chevronRight" class="wf-muted"></span></div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-around;padding:10px 24px;border-top:1.4px solid var(--wf-line);color:var(--wf-muted);font-size:15px">
+    <span>&#9664;</span><span>&#9679;</span><span>&#9650;</span><span>&#9660;</span>
+  </div>
+</div>`} />
+</Artboard>
+<Annotation id="n-main-reader" title="Within-tab grouping" targetId="a-main-reader" placement="bottom">
+
+The Reader category has ~14 items. Light section rules (TEXT / LAYOUT / SCREEN) break the wall without adding a navigation level. Focused value renders as a black stepper pill `‹ Medium ›` (reuses Lyra's `highlightValue` chip). Right edge keeps Lyra's real scrollbar.
+
+</Annotation>
+<Annotation id="n-main-system" title="Actions read differently from values" targetId="a-main-system" placement="bottom">
+
+Drill-in actions get a leading icon tile + trailing chevron ("opens a screen"); inline values/toggles do not. Toggles render as iOS-style switches (knob-right + filled track = on). Icon tiles map to Lyra's existing 24px bitmap set.
+
+</Annotation>
+</Section>
+
+<Section id="s-reader" title="In-reader Reader Menu (navigation & actions only)">
+<Artboard id="a-reader-menu" label={"Reader Menu — actions, formatting moved out"} surface="mobile">
+<Screen surface="mobile" html={`<div style="display:flex;flex-direction:column;height:100%;box-sizing:border-box;font-size:13px">
+  <div style="display:flex;align-items:center;gap:8px;padding:14px 16px 4px">
+    <strong style="font-size:16px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">The Left Hand of Darkness</strong>
+    <small class="wf-muted">82%</small>
+    <span style="width:26px;height:13px;border:1.6px solid var(--wf-ink);border-radius:2px"></span>
+  </div>
+  <div style="padding:0 16px 8px"><small class="wf-muted">Chapter 7 of 18 &middot; 41%</small></div>
+  <div style="height:3px;background:var(--wf-ink);margin:0 0 8px"></div>
+  <div style="flex:1;display:flex;flex-direction:column;gap:1px;padding:4px 14px 6px">
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--wf-accent-soft)"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft);border:1.6px solid var(--wf-ink)"></span><span style="flex:1">Chapters</span><span data-icon="chevronRight" class="wf-muted"></span></div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft)"></span><span style="flex:1">Bookmarks</span><span data-icon="chevronRight" class="wf-muted"></span></div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft)"></span><span style="flex:1">Add bookmark here</span></div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft)"></span><span style="flex:1">Go to position&hellip;</span><span data-icon="chevronRight" class="wf-muted"></span></div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft)"></span><span style="flex:1">Sync progress</span></div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft)"></span><span style="flex:1">Look up a word</span><span data-icon="chevronRight" class="wf-muted"></span></div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft)"></span><span style="flex:1">Go home</span></div>
+    <div style="margin:6px 4px;border-top:1.4px solid var(--wf-line)"></div>
+    <div style="display:flex;align-items:center;gap:11px;padding:9px 12px"><span style="width:22px;height:22px;border-radius:6px;background:var(--wf-accent-soft);border:1.6px solid var(--wf-ink)"></span><span style="flex:1"><strong>Reading settings</strong>&hellip;</span><span data-icon="chevronRight" class="wf-muted"></span></div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-around;padding:10px 24px;border-top:1.4px solid var(--wf-line);color:var(--wf-muted);font-size:15px">
+    <span>&#9664;</span><span>&#9679;</span><span>&#9650;</span><span>&#9660;</span>
+  </div>
+</div>`} />
+</Artboard>
+<Annotation id="n-reader-menu" title="Separated by purpose" targetId="a-reader-menu" placement="bottom">
+
+Reader Menu now holds only navigation & actions. Orientation, font, spacing, margins, auto-page-turn — all live formatting — move to Quick Settings, reachable from the "Reading settings…" row or the long-press gesture. Rebuilt on `drawHeader` + `drawList` instead of hardcoded Y positions.
+
+</Annotation>
+</Section>
+
+<Section id="s-qs" title="In-reader Quick Settings (live formatting)">
+<Artboard id="a-qs-before" label={"Before — hand-rolled overlay"} surface="mobile">
+<Screen surface="mobile" html={`<div style="display:flex;flex-direction:column;height:100%;box-sizing:border-box;font-size:13px">
+  <div style="padding:16px 18px 8px;color:var(--wf-muted);line-height:1.7">
+    <div>&hellip;the king was pregnant, and the news</div>
+    <div>ran through the streets of Erhenrang as</div>
+    <div>quick as the cold wind off the Kargav.</div>
+  </div>
+  <div style="flex:1"></div>
+  <div style="border-top:2px solid var(--wf-ink);padding:14px 0 8px">
+    <div style="display:flex;justify-content:center;gap:34px;padding:0 0 10px;border-bottom:1.4px solid var(--wf-line)">
+      <span style="background:var(--wf-ink);color:var(--wf-paper);padding:4px 14px;font-weight:700">Reader</span>
+      <span style="font-weight:700">Controls</span>
+    </div>
+    <div style="display:flex;align-items:center;padding:10px 22px"><span style="flex:1">Font Family</span><small class="wf-muted">Bookerly</small></div>
+    <div style="display:flex;align-items:center;padding:10px 22px;background:var(--wf-ink);color:var(--wf-paper)"><span style="flex:1">Font Size</span><span>&lt;&nbsp;&nbsp;Medium&nbsp;&nbsp;&gt;</span></div>
+    <div style="display:flex;align-items:center;padding:10px 22px"><span style="flex:1">Line Spacing</span><small class="wf-muted">Normal</small></div>
+    <div style="display:flex;align-items:center;padding:10px 22px"><span style="flex:1">Screen Margin</span><small class="wf-muted">20 px</small></div>
+    <div style="display:flex;align-items:center;justify-content:space-around;padding:12px 24px 4px;color:var(--wf-muted);font-size:15px"><span>&#9664;</span><span>&#9679;</span><span>&#9650;</span><span>&#9660;</span></div>
+  </div>
+</div>`} />
+</Artboard>
+
+<Artboard id="a-qs-after" label={"After — same kit as Settings"} surface="mobile">
+<Screen surface="mobile" html={`<div style="display:flex;flex-direction:column;height:100%;box-sizing:border-box;font-size:13px">
+  <div style="padding:16px 18px 8px;color:var(--wf-muted);line-height:1.7">
+    <div>&hellip;the king was pregnant, and the news</div>
+    <div>ran through the streets of Erhenrang as</div>
+    <div>quick as the cold wind off the Kargav.</div>
+  </div>
+  <div style="flex:1"></div>
+  <div style="border:1.6px solid var(--wf-ink);border-bottom:none;border-radius:16px 16px 0 0;padding:12px 16px 8px">
+    <div style="width:44px;height:4px;border-radius:4px;background:var(--wf-line);margin:0 auto 12px"></div>
+    <div style="display:flex;gap:6px;padding:0 0 10px;white-space:nowrap;border-bottom:1.4px solid var(--wf-line)">
+      <span class="wf-pill accent">Reader</span>
+      <span class="wf-pill">Controls</span>
+    </div>
+    <div style="display:flex;align-items:center;padding:9px 12px"><span style="flex:1">Font family</span><small class="wf-muted">Bookerly</small></div>
+    <div style="display:flex;align-items:center;padding:9px 12px;border-radius:9px;background:var(--wf-accent-soft)"><span style="flex:1">Font size</span><span class="wf-pill accent">&#8249;&nbsp;Medium&nbsp;&#8250;</span></div>
+    <div style="display:flex;align-items:center;padding:9px 12px"><span style="flex:1">Line spacing</span><small class="wf-muted">Normal</small></div>
+    <div style="display:flex;align-items:center;padding:9px 12px"><span style="flex:1">Hyphenation</span><span style="display:inline-flex;align-items:center;justify-content:flex-start;width:36px;height:20px;border-radius:999px;border:1.6px solid var(--wf-line);padding:2px;box-sizing:border-box"><span style="width:16px;height:16px;border-radius:999px;background:var(--wf-line)"></span></span></div>
+    <div style="display:flex;align-items:center;justify-content:space-around;padding:12px 24px 4px;color:var(--wf-muted);font-size:15px"><span>&#9664;</span><span>&#9679;</span><span>&#9650;</span><span>&#9660;</span></div>
+  </div>
+</div>`} />
+</Artboard>
+
+<Artboard id="a-qs-zoom" label={"Quick Settings sheet — detail"} surface="panel">
+<Screen surface="panel" html={`<div style="display:flex;flex-direction:column;height:100%;box-sizing:border-box;font-size:14px;padding:16px">
+  <div style="width:48px;height:4px;border-radius:4px;background:var(--wf-line);margin:0 auto 14px"></div>
+  <div style="display:flex;gap:8px;padding:0 0 12px;white-space:nowrap;border-bottom:1.4px solid var(--wf-line)">
+    <span class="wf-pill accent">Reader</span>
+    <span class="wf-pill">Controls</span>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:3px;padding-top:8px">
+    <div style="display:flex;align-items:center;padding:11px 14px"><span style="flex:1">Font family</span><small class="wf-muted">Bookerly</small></div>
+    <div style="display:flex;align-items:center;padding:11px 14px;border-radius:10px;background:var(--wf-accent-soft)"><span style="flex:1">Font size</span><span class="wf-pill accent">&#8249;&nbsp;&nbsp;Medium&nbsp;&nbsp;&#8250;</span></div>
+    <div style="display:flex;align-items:center;padding:11px 14px"><span style="flex:1">Alignment</span><small class="wf-muted">Justify</small></div>
+    <div style="display:flex;align-items:center;padding:11px 14px"><span style="flex:1">Hyphenation</span><span style="display:inline-flex;align-items:center;justify-content:flex-start;width:36px;height:20px;border-radius:999px;border:1.6px solid var(--wf-line);padding:2px;box-sizing:border-box"><span style="width:16px;height:16px;border-radius:999px;background:var(--wf-line)"></span></span></div>
+    <div style="display:flex;align-items:center;padding:11px 14px"><span style="flex:1">Anti-aliasing</span><span style="display:inline-flex;align-items:center;justify-content:flex-end;width:36px;height:20px;border-radius:999px;background:var(--wf-ink);padding:2px;box-sizing:border-box"><span style="width:16px;height:16px;border-radius:999px;background:var(--wf-paper)"></span></span></div>
+  </div>
+</div>`} />
+</Artboard>
+<Annotation id="n-qs-after" title="Instant, no grayscale pass" targetId="a-qs-after" placement="bottom">
+
+Selection uses solid black/white pills, not Lyra's gray dither — the overlay deliberately skips the grayscale pass (`EpubReaderActivity.cpp:1010`) to stay instant over live text. Black pill = on-brand with Lyra's "black = active" language. Rounded top corners + grabber read it as a sheet.
+
+</Annotation>
+<Annotation id="n-qs-zoom" title="One value model everywhere" targetId="a-qs-zoom" placement="right">
+
+Up/Down moves rows; Left/Right steps the focused value inside the `‹ ›` pill; Confirm flips toggles. Identical to main Settings — one mental model across all three surfaces.
+
+</Annotation>
+</Section>
+</DesignBoard>

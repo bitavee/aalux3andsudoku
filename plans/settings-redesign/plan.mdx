@@ -1,0 +1,193 @@
+---
+title: "Settings Redesign — Refined Lyra"
+brief: "Unify and polish the three settings surfaces (main Settings, in-reader Reader Menu, Quick Settings) on the existing Lyra design kit."
+kind: "plan"
+localOnly: true
+---
+
+<RichText id="objective">
+
+### Objective & done criteria
+
+Make all three settings surfaces feel like one polished app. The work is **consistency and hierarchy, not a new look** — the device runs a single hardcoded theme (`LyraTheme`, `UITheme.cpp:21`), and that theme already has a competent e-ink kit: rounded-rect selection with gray-dither fills, black "pills" for the focused value, 24/32px bitmap icons, header underline rules, and a real scrollbar. Two of the three surfaces simply don't use it.
+
+**Done** =
+
+- **Reader Menu** (`EpubReaderMenuActivity`) and **Quick Settings** (the `EpubReaderActivity` overlay) are rebuilt on the shared `GUI` primitives instead of hand-rolled hardcoded layouts — same header, list rows, selection, and value treatment as main Settings.
+- **Main Settings** uses the kit's good parts it currently skips: within-tab section grouping, icon tiles on drill-in actions, and On/Off pills.
+- The reader's two settings surfaces are **separated by purpose**: Reader Menu = navigation & actions; Quick Settings = live formatting.
+- One value-editing model across all three (Up/Down moves, Left/Right steps the focused value, Confirm activates).
+- Builds clean, host tests pass, and it reads correctly in all four orientations on device.
+
+The four design forks are now resolved — see **Decisions** at the bottom.
+
+</RichText>
+
+<Callout id="decision" tone="decision">
+
+**Approach: refine & extend Lyra, applied consistently.** Keep the in-progress tab-bar structure for main Settings; do not invent a new visual language. The biggest beauty-per-effort win is that the Reader Menu and Quick Settings hand-roll their own layout (black-inversion boxes at hardcoded Y positions like `15/45/75`) and look like a different, older app bolted on. Routing them through the same `drawHeader` / `drawList` / value-pill / glyph-hint primitives makes them consistent *and* deletes bespoke layout code. Flash is not a constraint here — the `default` image is **4.68 MB against the 6.55 MB limit (~1.87 MB free)**, RAM at 33% — so new icons and a couple of new primitives are affordable. The binding constraints are the e-ink panel (1-bit, slow refresh, grayscale is expensive) and RAM discipline.
+
+</Callout>
+
+<RichText id="kit">
+
+### Design kit — what we reuse, and the small delta we add
+
+Lead with reuse. Almost everything already exists in `LyraTheme` / `BaseTheme`:
+
+</RichText>
+
+<Table
+  id="kit-table"
+  columns={["Element", "Status", "Source"]}
+  rows={[
+    ["Rounded gray selection highlight", "Reuse", "LyraTheme::drawList — fillRoundedRect(Color::LightGray)"],
+    ["Black focused-value pill", "Reuse", "LyraTheme::drawList — highlightValue branch (main Settings already passes true)"],
+    ["Tab pills + header underline rule", "Reuse", "LyraTheme::drawTabBar / drawHeader"],
+    ["Row icons (24/32px) + real scrollbar", "Reuse", "LyraTheme::drawList rowIcon path, drawIcon"],
+    ["Bottom glyph hints — standard ◀ ● ▲ ▼", "Reuse", "drawButtonHintsGlyphs(Navigation), same band as home; drop the custom SettingsNav variant"],
+    ["Within-list section subheaders", "Add (small)", "New: data-driven group label rule inside drawList, or drawSubHeader between groups"],
+    ["On/Off toggle switch (iOS-style)", "Add", "New: rounded track + filled knob — fillRoundedRect track + filled circle"],
+    ["Quick Settings bottom-sheet frame", "Add (small)", "New: rounded-top sheet + solid-black selection (no grayscale pass)"],
+    ["`‹ value ›` stepper arrows on focused value", "Add (tiny)", "Arrows around the existing value pill"],
+  ]}
+/>
+
+<RichText id="surfaces-heading">
+
+### The three surfaces
+
+The mocks above are the target state; here is the per-surface intent and the technical delta.
+
+**1 · Main Settings (`SettingsActivity`).** Keep the tab bar (Display / Reader / Controls / System). The Reader tab alone has ~14 items, so add light **section rules** (TEXT / LAYOUT / SCREEN) to break the wall without a second navigation level. Give **drill-in action rows** (Wi-Fi, File transfer, KOReader sync, Clear cache, Check for updates, Manage fonts, Status bar) a leading icon tile + trailing chevron so they read differently from inline value rows. Render toggles as iOS-style switches (a rounded track with a knob; knob-right + filled track = on) — see the legibility risk below. The focused-value black pill already works here (`drawList` is called with `highlightValue = true`); we only add the `‹ ›` stepper arrows. The bottom hint band uses the standard four-glyph `Navigation` set (◀ ● ▲ ▼), identical to the home screen — the in-progress `SettingsNav` variant (stacked up/down + left/right glyphs) is dropped. Confirm already cycles tabs and values (`SettingsActivity.cpp:91-98,153-165`), so Left/Right remain optional accelerators rather than earning their own glyphs.
+
+**2 · Reader Menu (`EpubReaderMenuActivity`).** Today it's hand-rolled and mixes navigation, actions, and formatting in one flat 14-item list. Rebuild `render()` on `drawHeader` (book title + progress subtitle) + `drawList` (icon tiles, gray selection, chevrons). Strip it to **navigation & actions only**: Chapters, Bookmarks, Add bookmark, Go to position, Sync, Look-up, Screenshot, QR, Go home, Delete cache. A single **"Reading settings…"** row opens Quick Settings (the long-press gesture still opens it directly).
+
+**3 · Quick Settings (`EpubReaderActivity` overlay).** Rebuild `renderQuickSettingsOverlay()` as a proper Lyra bottom sheet: rounded top corners, pill tabs (Reader / Controls), value rows with the focused stepper pill, toggle pills. It owns **all live formatting** — and gains **Orientation** and **Auto page turn** (both moved out of the Reader Menu). One deliberate divergence from the kit: selection is **solid black/white, not gray dither**, because the overlay intentionally skips the grayscale pass for instant nav (`EpubReaderActivity.cpp:1010`). A solid black pill is both fast and on-brand with Lyra's "black = active" idiom.
+
+</RichText>
+
+<RichText id="ia-heading">
+
+### Information architecture — where each setting lives
+
+</RichText>
+
+<Diagram
+  id="ia-diagram"
+  data={{
+    html: `<div class="ia">
+  <div class="diagram-panel" data-rough><div class="hd">Main Settings</div><div class="diagram-muted">Full catalogue</div><div class="diagram-card">Display</div><div class="diagram-card">Reader (full)</div><div class="diagram-card">Controls</div><div class="diagram-card">System + tools</div></div>
+  <div class="diagram-panel" data-rough><div class="hd">Reader Menu</div><div class="diagram-muted">Navigation &amp; actions</div><div class="diagram-card">Chapters &middot; Bookmarks</div><div class="diagram-card">Go to % &middot; Sync</div><div class="diagram-card">Screenshot &middot; QR &middot; Home</div></div>
+  <div class="diagram-panel" data-rough><div class="hd">Quick Settings</div><div class="diagram-muted">Live formatting</div><div class="diagram-card">Font &middot; Size &middot; Spacing</div><div class="diagram-card">Margin &middot; Align &middot; Orientation</div><div class="diagram-card">curated subset of Reader</div></div>
+</div>`,
+    css: `.ia{display:flex;gap:14px}.ia .diagram-panel{flex:1;display:flex;flex-direction:column;gap:6px;padding:12px}.ia .hd{font-weight:700}.ia .diagram-card{padding:6px 8px}.ia .diagram-muted{font-size:12px}`,
+    caption: "Three surfaces, one kit. Quick Settings is a curated subset of Settings · Reader; Reader Menu holds only navigation & actions."
+  }}
+/>
+
+<Table
+  id="moves-table"
+  columns={["Item", "Today", "After"]}
+  rows={[
+    ["Orientation", "Reader Menu + Settings·Reader", "Quick Settings·Reader + Settings·Reader"],
+    ["Auto page turn", "Reader Menu", "Quick Settings · Reader"],
+    ["\"Quick Settings\" menu entry", "Reader Menu item", "Removed → \"Reading settings…\" row + long-press"],
+    ["Font / Size / Spacing / Margin / Align / Hyphenation / AA", "Settings·Reader + QS (different look)", "Both, now visually identical"],
+    ["Bionic / Images", "Settings·Reader only", "Stay Settings-only (QS kept curated)"],
+    ["Screenshot / QR / Sync / Delete cache / Chapters / Bookmarks", "Reader Menu", "Reader Menu, restyled (unchanged role)"],
+  ]}
+/>
+
+<RichText id="filemap-heading">
+
+### File map
+
+No book-cache or `stats.bin` formats are touched, so this needs no cache invalidation. Generated I18n files are gitignored — edit `english.yaml` only.
+
+</RichText>
+
+<FileTree
+  id="filemap"
+  title="Files touched"
+  entries={[
+    { path: "src/activities/reader/EpubReaderMenuActivity.cpp", change: "modified", note: "Rebuild render() on drawHeader + drawList; drop formatting items; add 'Reading settings…' row." },
+    { path: "src/activities/reader/EpubReaderActivity.cpp", change: "modified", note: "Rebuild renderQuickSettingsOverlay() as Lyra sheet; add Orientation to QS Reader tab; reroute moved menu actions." },
+    { path: "src/activities/settings/SettingsActivity.cpp", change: "modified", note: "Section subheaders within a tab; icon tiles + chevrons on action rows; toggle pills; ‹ › stepper arrows." },
+    { path: "src/SettingsList.h", change: "modified", note: "Add a group/section StrId to SettingInfo; optionally a shared source of truth for the QS subset." },
+    { path: "src/components/themes/lyra/LyraTheme.cpp", change: "modified", note: "Toggle-pill + section-rule support in drawList; bottom-sheet helper for the overlay." },
+    { path: "src/components/themes/BaseTheme.h", change: "modified", note: "Declare any new primitive signatures (toggle pill / section rule / sheet)." },
+    { path: "src/components/icons", change: "added", note: "A few 24px icons for action rows that lack one (chapters, screenshot, QR, dictionary); most already exist." },
+    { path: "lib/I18n/translations/english.yaml", change: "modified", note: "New STR_* for section labels (TEXT/LAYOUT/SCREEN/TOOLS) and 'Reading settings…'." },
+  ]}
+/>
+
+<RichText id="planned-shape-heading">
+
+### Planned shape — data-driven grouping
+
+To keep subheaders out of render logic, carry the group on each setting and let `drawList` emit a rule when the group changes. Smallest plausible shape:
+
+</RichText>
+
+<Code
+  id="planned-shape"
+  filename="src/SettingsList.h (planned)"
+  language="cpp"
+  code={`// SettingInfo gains an optional section label; entries stay grouped in list order.
+struct SettingInfo {
+  // ...existing fields...
+  StrId section = StrId::STR_NONE_OPT;   // TEXT / LAYOUT / SCREEN / TOOLS — drawn as a rule when it changes
+};
+
+// Reader tab, in order:
+SettingInfo::Enum(STR_FONT_FAMILY, ...).inSection(STR_SECT_TEXT),
+SettingInfo::Enum(STR_FONT_SIZE,   ...).inSection(STR_SECT_TEXT),
+SettingInfo::Value(STR_SCREEN_MARGIN, ...).inSection(STR_SECT_LAYOUT),
+SettingInfo::Enum(STR_ORIENTATION, ...).inSection(STR_SECT_SCREEN),`}
+/>
+
+<Callout id="risks" tone="risk">
+
+**Constraints & risks.** (1) **Grayscale in the overlay** — Quick Settings must not trigger a grayscale pass over live text (`EpubReaderActivity.cpp:1010`); use solid black/white pills, verify nav stays instant. (2) **Four orientations** — the Reader Menu has bespoke landscape/inverted gutters today; moving to `drawList` must preserve correct layout in Portrait, Inverted, and both Landscapes (a known bug-magnet). (3) **Two paths must not drift** — Settings·Reader and Quick Settings duplicate the same formatting options; without a shared source they'll diverge — resolved by a single shared source of truth (see Decisions). (4) **Icon tiles** read as broken images if a bitmap is missing — every action row needs a real 24px icon before ship. (5) **RAM** — build all menu/list vectors in `onEnter()`, free in `onExit()`; no per-frame heap in the overlay render path. (6) **Toggle legibility** — the chosen iOS-style switch must stay unmistakable at ~20px on a 1-bit panel with no anti-aliased grays; verify on hardware and fall back to a labelled On/Off pill if the on/off states blur.
+
+</Callout>
+
+<RichText id="verify-heading">
+
+### Verification
+
+</RichText>
+
+<Checklist
+  id="verify"
+  items={[
+    { id: "v-build", label: "pio run clean — 0 warnings; confirm Total image size stays under 6,553,344 bytes" },
+    { id: "v-host", label: "Host tests pass (cmake + ctest — the run_*.sh scripts no longer exist)" },
+    { id: "v-check", label: "pio check --fail-on-defect medium --fail-on-defect high + clang-format-fix clean" },
+    { id: "v-orient", label: "All 4 orientations on device: Settings tabs, Reader Menu, Quick Settings overlay" },
+    { id: "v-qs", label: "Quick Settings opens instantly over text (no grayscale flash); values apply on close" },
+    { id: "v-heap", label: "ESP.getFreeHeap() > 50 KB; no leak across Reader → Menu → Quick Settings → back" },
+    { id: "v-parity", label: "A value changed in Quick Settings shows the same in Settings·Reader and vice versa" },
+    { id: "v-switch", label: "Toggle switches read clearly as on vs off on the physical 1-bit panel (no grays)" },
+  ]}
+/>
+
+<RichText id="decisions-heading">
+
+### Decisions (resolved)
+
+These were the open forks; they are now settled and reflected in the mocks above.
+
+</RichText>
+
+<Table
+  id="decisions-table"
+  columns={["Decision", "Choice", "Note"]}
+  rows={[
+    ["Toggle rendering", "iOS-style switch glyph", "Knob-right + filled track = on. Watch the 1-bit legibility risk noted above."],
+    ["Auto page turn", "Quick Settings · Reader tab", "Joins Orientation as in-reader live formatting."],
+    ["Quick Settings selection", "Solid black/white pills", "Keeps the instant, no-grayscale fast path over live text."],
+    ["Settings ↔ Quick Settings sync", "Shared source of truth + curated subset", "Defined once; QS shows the high-use subset, Settings the full set."],
+  ]}
+/>
