@@ -619,6 +619,8 @@ void SeriesViewerActivity::drawFocusBorder() const {
                            true);
   renderer.drawRoundedRect(coverX - 3, coverY - 3, kCoverW + 6, kCoverH + 6, 1, HomeRenderer::kCoverCornerRadius + 3,
                            true);
+  renderer.drawRoundedRect(coverX - 4, coverY - 4, kCoverW + 8, kCoverH + 8, 1, HomeRenderer::kCoverCornerRadius + 4,
+                           true);
 }
 
 bool SeriesViewerActivity::storeCoverBuffer() {

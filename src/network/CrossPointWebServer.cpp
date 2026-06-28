@@ -1079,11 +1079,14 @@ void CrossPointWebServer::handleGetSettings() const {
 
   char output[512];
   constexpr size_t outputSize = sizeof(output);
+  char sbuf[160];
   bool seenFirst = false;
   JsonDocument doc;
 
   for (const auto& s : settings) {
     if (!s.key) continue;  // Skip ACTION-only entries
+
+    LOG_DBG("WEB", "emit setting %s (heap=%d)", s.key, ESP.getFreeHeap());
 
     doc.clear();
     doc["key"] = s.key;
@@ -1126,7 +1129,9 @@ void CrossPointWebServer::handleGetSettings() const {
         if (s.stringGetter) {
           doc["value"] = s.stringGetter();
         } else if (s.stringMaxLen > 0) {
-          doc["value"] = reinterpret_cast<const char*>(&SETTINGS) + s.stringOffset;
+          const char* src = reinterpret_cast<const char*>(&SETTINGS) + s.stringOffset;
+          snprintf(sbuf, sizeof(sbuf), "%.*s", static_cast<int>(s.stringMaxLen), src);
+          doc["value"] = sbuf;
         }
         break;
       }

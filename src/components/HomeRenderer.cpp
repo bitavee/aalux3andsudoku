@@ -582,22 +582,19 @@ void drawBottomMenu(GfxRenderer& renderer, const Rect& rect) {
 
 void drawMenuSelection(GfxRenderer& renderer, const Rect& menuRect, int selectedIndex) {
   if (selectedIndex < 0 || selectedIndex >= kMenuTilesCount) return;
-  const char* labels[kMenuTilesCount] = {tr(STR_BOOKSHELF), tr(STR_STATS_TITLE), tr(STR_TRANSFER),
-                                         tr(STR_SETTINGS_TITLE)};
   const Rect tile = getMenuTileRect(menuRect, selectedIndex);
 
-  // Solid black fill -- covers the previously-drawn icon+label so we don't
-  // need to repaint the whole menu band. Rounded corners match the visual
-  // language of the rest of the focus indicators in the home composition.
+  // Rounded outline around the focused tile, matching the cover/thumbnail focus
+  // style. The tile's icon+label, drawn by drawBottomMenu (and preserved in the
+  // restored home snapshot), remain visible underneath the outline.
   constexpr int kCornerRadius = 6;
-  renderer.fillRoundedRect(tile.x, tile.y, tile.width, tile.height, kCornerRadius, Color::Black);
-
-  // White label centred in the tile -- no icon.
-  const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, labels[selectedIndex]);
-  const int textHeight = renderer.getLineHeight(UI_10_FONT_ID);
-  const int textX = tile.x + (tile.width - textWidth) / 2;
-  const int textY = tile.y + (tile.height - textHeight) / 2;
-  renderer.drawText(UI_10_FONT_ID, textX, textY, labels[selectedIndex], /*black=*/false);
+  constexpr int kInset = 2;
+  const int bx = tile.x + kInset;
+  const int by = tile.y + kInset;
+  const int bw = tile.width - 2 * kInset;
+  const int bh = tile.height - 2 * kInset;
+  renderer.drawRoundedRect(bx, by, bw, bh, 1, kCornerRadius, true);
+  renderer.drawRoundedRect(bx + 1, by + 1, bw - 2, bh - 2, 1, kCornerRadius - 1, true);
 }
 
 void drawStackedCover(GfxRenderer& renderer, int x, int y, int width, int height, const std::string& thumbPath,
@@ -681,6 +678,8 @@ void drawSelectionBorder(GfxRenderer& renderer, const Rect& inner, bool rTL, boo
                              true);
     renderer.drawRoundedRect(inner.x - 3, inner.y - 3, inner.width + 6, inner.height + 6, 1, kCoverCornerRadius + 3,
                              true);
+    renderer.drawRoundedRect(inner.x - 4, inner.y - 4, inner.width + 8, inner.height + 8, 1, kCoverCornerRadius + 4,
+                             true);
     return;
   }
 
@@ -690,6 +689,8 @@ void drawSelectionBorder(GfxRenderer& renderer, const Rect& inner, bool rTL, boo
   renderer.drawRoundedRect(inner.x - 2, inner.y - 2, inner.width + 4, inner.height + 4, 1, kCornerRadius, rTL, rTR, rBL,
                            rBR, true);
   renderer.drawRoundedRect(inner.x - 3, inner.y - 3, inner.width + 6, inner.height + 6, 1, kCornerRadius, rTL, rTR, rBL,
+                           rBR, true);
+  renderer.drawRoundedRect(inner.x - 4, inner.y - 4, inner.width + 8, inner.height + 8, 1, kCornerRadius, rTL, rTR, rBL,
                            rBR, true);
 }
 
