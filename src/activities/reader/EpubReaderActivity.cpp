@@ -585,7 +585,18 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       break;
     }
     case EpubReaderMenuActivity::MenuAction::SYNC_CLOCK: {
-      startActivityForResult(std::make_unique<ClockSyncActivity>(renderer, mappedInput), [](const ActivityResult&) {});
+      const int clockBandBefore = readerClockBandHeight();
+      startActivityForResult(std::make_unique<ClockSyncActivity>(renderer, mappedInput),
+                             [this, clockBandBefore](const ActivityResult&) {
+                               if (readerClockBandHeight() == clockBandBefore) return;
+                               RenderLock lock(*this);
+                               if (section) {
+                                 cachedSpineIndex = currentSpineIndex;
+                                 cachedChapterTotalPageCount = section->pageCount;
+                                 nextPageNumber = section->currentPage;
+                               }
+                               section.reset();
+                             });
       break;
     }
   }

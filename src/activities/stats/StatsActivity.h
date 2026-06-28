@@ -36,6 +36,8 @@ class StatsActivity final : public Activity {
   // remove flow so the same predicate hides hidden entries from all three.
   uint8_t resolveSelectedMemoryIndex() const;
   void confirmRemoveFocusedBook();
+  int calendarMinMonthOffset() const;
 
   int selectedBookIndex = 0;
+  int calendarMonthOffset = 0;
 };

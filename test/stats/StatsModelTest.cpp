@@ -233,6 +233,26 @@ TEST(StatsPet, StageGrowsWithXp) {
   EXPECT_EQ(stats::petStageForXp(1200), 5);
 }
 
+TEST(StatsPet, XpBarBoundsMatchStages) {
+  for (uint16_t xp : {uint16_t{0}, uint16_t{49}, uint16_t{50}, uint16_t{149}, uint16_t{450}, uint16_t{1199},
+                      uint16_t{1200}, uint16_t{5000}}) {
+    const uint8_t stage = stats::petStageForXp(xp);
+    const uint16_t floor = stats::petXpFloorForStage(stage);
+    const uint16_t next = stats::petXpNextForStage(stage);
+    EXPECT_LE(floor, xp);
+    if (stage >= 5) {
+      EXPECT_EQ(next, 0);  // max stage has no next threshold
+    } else {
+      EXPECT_LT(xp, next);
+      EXPECT_LT(floor, next);
+    }
+  }
+  EXPECT_EQ(stats::petXpFloorForStage(0), 0);
+  EXPECT_EQ(stats::petXpNextForStage(0), 50);
+  EXPECT_EQ(stats::petXpFloorForStage(4), 700);
+  EXPECT_EQ(stats::petXpNextForStage(4), 1200);
+}
+
 TEST(StatsPet, FeedingGrantsXpAndAdvancesStage) {
   GlobalStats g{};
   for (int i = 0; i < 5; ++i) stats::updatePet(g, 20000);  // 5 feeds * 10 XP

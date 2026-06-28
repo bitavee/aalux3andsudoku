@@ -159,12 +159,29 @@ void StatsActivity::loop() {
     viewMode = static_cast<uint8_t>((viewMode + 1) % 6);
     showingFinished = (viewMode == 1);
     selectedBookIndex = 0;
+    calendarMonthOffset = 0;
     requestUpdate();
     return;
   }
 
-  // Badges and Pet are read-only views; the rest of the input drives the list.
-  if (viewMode >= 2) return;
+  // Calendar pages through months with Up/Down; the other non-list views
+  // (Badges, Pet, Wrapped) take no further input.
+  if (viewMode >= 2) {
+    if (viewMode == 4) {
+      if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+        if (calendarMonthOffset > calendarMinMonthOffset()) {
+          calendarMonthOffset--;
+          requestUpdate();
+        }
+      } else if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+        if (calendarMonthOffset < 0) {
+          calendarMonthOffset++;
+          requestUpdate();
+        }
+      }
+    }
+    return;
+  }
 
   const uint8_t bookCount = getVisibleBookCount();
   if (bookCount == 0) return;
@@ -267,6 +284,25 @@ void StatsActivity::confirmRemoveFocusedBook() {
       std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_REMOVE_FROM_STATS), title), handler);
 }
 
+int StatsActivity::calendarMinMonthOffset() const {
+  const auto& global = StatsManager.getGlobal();
+  const time_t nowEpoch = time(nullptr);
+  if (!stats::epochValid(static_cast<int64_t>(nowEpoch))) return 0;
+  const uint16_t today =
+      stats::dayNumber(static_cast<int64_t>(nowEpoch), stats::utcOffsetSeconds(SETTINGS.clockUtcOffsetQ));
+  if (today == 0) return 0;
+
+  int earliest = global.firstEverDay;
+  const int ringFloor = static_cast<int>(today) - (STATS_DAY_RING_SIZE - 1);
+  if (earliest <= 0 || earliest < ringFloor) earliest = ringFloor;
+  if (earliest < 0) earliest = 0;
+  if (earliest > static_cast<int>(today)) earliest = static_cast<int>(today);
+
+  const stats::CivilDate tc = stats::civilFromDays(static_cast<int>(today));
+  const stats::CivilDate ec = stats::civilFromDays(earliest);
+  return -((tc.year - ec.year) * 12 + (tc.month - ec.month));
+}
+
 // -----------------------------------------------------------------------
 // Rendering
 // -----------------------------------------------------------------------
@@ -304,7 +340,8 @@ void StatsActivity::render(RenderLock&& lock) {
     renderWrapped(contentTop, contentH, screenW);
   }
 
-  GUI.drawButtonHintsGlyphs(renderer, BaseTheme::ButtonHintGlyphSet::StatsActions);
+  GUI.drawButtonHintsGlyphs(renderer, viewMode == 4 ? BaseTheme::ButtonHintGlyphSet::Navigation
+                                                    : BaseTheme::ButtonHintGlyphSet::StatsActions);
 
   renderer.displayBuffer();
 }
@@ -549,13 +586,12 @@ static void drawCatSprite(GfxRenderer& r, const CatSprite& s, int x, int y) {
   }
 }
 
-static void drawPetBar(GfxRenderer& r, int x, int y, int w, int h, const char* label, uint8_t pct) {
+static void drawPetBar(GfxRenderer& r, int x, int y, int w, int h, const char* label, const char* rightText,
+                       uint8_t pct) {
   const int lh = r.getLineHeight(UI_10_FONT_ID);
   r.drawText(UI_10_FONT_ID, x, y, label, true);
-  char pb[8];
-  snprintf(pb, sizeof(pb), "%u%%", static_cast<unsigned>(pct));
-  const int pw = r.getTextWidth(UI_10_FONT_ID, pb);
-  r.drawText(UI_10_FONT_ID, x + w - pw, y, pb, true);
+  const int pw = r.getTextWidth(UI_10_FONT_ID, rightText);
+  r.drawText(UI_10_FONT_ID, x + w - pw, y, rightText, true);
   const int by = y + lh + 1;
   r.drawRect(x, by, w, h, true);
   int fillW = (w - 2) * pct / 100;
@@ -582,7 +618,8 @@ void StatsActivity::renderPet(int panelY, int panelH, int screenW) const {
   const int stage = global.petStage > 5 ? 5 : global.petStage;
   const int cx = screenW / 2;
   const CatSprite& cat = (stage < 2) ? kCatKitten : (stage < 4) ? kCatSitting : kCatLoaf;
-  const int blockH = cat.h + 8 + lh12 + 8 + 2 * (lh10 + 19) + 10 + lh10 + 4 + lh12;
+  const int barBlock = lh10 + 1 + 10;
+  const int blockH = cat.h + 8 + lh12 + 8 + barBlock + 8 + barBlock + 8 + barBlock + 10 + lh12;
   int catTop = panelY + (panelH - blockH) / 2;
   if (catTop < panelY + 8) catTop = panelY + 8;
   drawCatSprite(renderer, cat, cx - cat.w / 2, catTop);
@@ -595,10 +632,30 @@ void StatsActivity::renderPet(int panelY, int panelH, int screenW) const {
   int barW = screenW - 2 * pad;
   if (barW > 240) barW = 240;
   const int barX = cx - barW / 2;
-  drawPetBar(renderer, barX, ty, barW, 10, tr(STR_STATS_HUNGER), global.petHunger);
-  ty += lh10 + 1 + 10 + 8;
-  drawPetBar(renderer, barX, ty, barW, 10, tr(STR_STATS_HAPPINESS), global.petHappiness);
-  ty += lh10 + 1 + 10 + 10;
+
+  char rbuf[12];
+  snprintf(rbuf, sizeof(rbuf), "%u%%", static_cast<unsigned>(global.petHunger));
+  drawPetBar(renderer, barX, ty, barW, 10, tr(STR_STATS_HUNGER), rbuf, global.petHunger);
+  ty += barBlock + 8;
+  snprintf(rbuf, sizeof(rbuf), "%u%%", static_cast<unsigned>(global.petHappiness));
+  drawPetBar(renderer, barX, ty, barW, 10, tr(STR_STATS_HAPPINESS), rbuf, global.petHappiness);
+  ty += barBlock + 8;
+
+  const uint16_t nextXp = stats::petXpNextForStage(static_cast<uint8_t>(stage));
+  char xpRight[20];
+  uint8_t xpPct;
+  if (nextXp == 0) {
+    xpPct = 100;
+    snprintf(xpRight, sizeof(xpRight), "%u %s", static_cast<unsigned>(global.petXp), tr(STR_STATS_PET_MAX));
+  } else {
+    const uint16_t floorXp = stats::petXpFloorForStage(static_cast<uint8_t>(stage));
+    const uint16_t span = static_cast<uint16_t>(nextXp - floorXp);
+    const uint16_t into = global.petXp > floorXp ? static_cast<uint16_t>(global.petXp - floorXp) : 0;
+    xpPct = span ? static_cast<uint8_t>(into * 100u / span) : 0;
+    snprintf(xpRight, sizeof(xpRight), "%u/%u", static_cast<unsigned>(global.petXp), static_cast<unsigned>(nextXp));
+  }
+  drawPetBar(renderer, barX, ty, barW, 10, tr(STR_STATS_XP), xpRight, xpPct);
+  ty += barBlock + 10;
 
   bool thriving = false;
   const time_t nowEpoch = time(nullptr);
@@ -607,9 +664,6 @@ void StatsActivity::renderPet(int panelY, int panelH, int screenW) const {
         stats::dayNumber(static_cast<int64_t>(nowEpoch), stats::utcOffsetSeconds(SETTINGS.clockUtcOffsetQ));
     thriving = stats::streakAlive(global, today) && global.currentStreakDays > 0;
   }
-  snprintf(buf, sizeof(buf), "%u XP", static_cast<unsigned>(global.petXp));
-  renderer.drawCenteredText(UI_10_FONT_ID, ty, buf, true);
-  ty += lh10 + 4;
   renderer.drawCenteredText(UI_12_FONT_ID, ty, thriving ? tr(STR_STATS_PET_THRIVING) : tr(STR_STATS_PET_RESTING), true);
 }
 
@@ -635,7 +689,18 @@ void StatsActivity::renderCalendar(int panelY, int panelH, int screenW) const {
   }
 
   const uint16_t goal = global.goalTarget > 0 ? global.goalTarget : STATS_DEFAULT_GOAL_MINUTES;
-  const stats::CivilDate cd = stats::civilFromDays(static_cast<int>(today));
+  const stats::CivilDate tcd = stats::civilFromDays(static_cast<int>(today));
+  int dispYear = tcd.year;
+  int dispMonth = tcd.month + calendarMonthOffset;
+  while (dispMonth < 1) {
+    dispMonth += 12;
+    dispYear--;
+  }
+  while (dispMonth > 12) {
+    dispMonth -= 12;
+    dispYear++;
+  }
+  const stats::CivilDate cd = {dispYear, dispMonth, 1};
   const int firstWd = stats::weekdayMon(stats::daysFromCivil(cd.year, cd.month, 1));
   const int nDays = stats::daysInMonth(cd.year, cd.month);
   const int rows = (firstWd + nDays + 6) / 7;

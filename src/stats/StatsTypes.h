@@ -210,14 +210,23 @@ inline uint8_t petClampDown(uint8_t value, int delta) {
   return r < 0 ? 0 : static_cast<uint8_t>(r);
 }
 
+inline constexpr uint16_t kPetStageThresholds[5] = {50, 150, 350, 700, 1200};
+
 inline uint8_t petStageForXp(uint16_t xp) {
-  if (xp < 50) return 0;
-  if (xp < 150) return 1;
-  if (xp < 350) return 2;
-  if (xp < 700) return 3;
-  if (xp < 1200) return 4;
-  return 5;
+  uint8_t stage = 0;
+  for (uint8_t i = 0; i < 5; ++i) {
+    if (xp >= kPetStageThresholds[i]) stage = static_cast<uint8_t>(i + 1);
+  }
+  return stage;
 }
+
+inline uint16_t petXpFloorForStage(uint8_t stage) {
+  if (stage == 0) return 0;
+  if (stage > 5) stage = 5;
+  return kPetStageThresholds[stage - 1];
+}
+
+inline uint16_t petXpNextForStage(uint8_t stage) { return stage >= 5 ? 0 : kPetStageThresholds[stage]; }
 
 inline void updatePet(GlobalStats& g, uint16_t today) {
   if (g.lastReadDay != 0 && today > g.lastReadDay) {

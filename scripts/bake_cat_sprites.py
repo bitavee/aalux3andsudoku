@@ -140,8 +140,8 @@ def cat_kitten(d, cx, by, S):
     OW = max(2, round(S*0.016))
     bw, bh = int(.92*S), int(.58*S)
     bx, byy = cx-bw//2, by-bh
-    tail(d, [(cx+int(.28*S), by-int(.10*S)), (cx+int(.02*S), by-int(.04*S)), (cx-int(.30*S), by-int(.06*S)),
-             (cx-int(.48*S), by-int(.20*S)), (cx-int(.48*S), by-int(.38*S))], S, OW)
+    tail(d, [(cx+int(.30*S), by-int(.10*S)), (cx+int(.52*S), by-int(.08*S)), (cx+int(.64*S), by-int(.24*S)),
+             (cx+int(.58*S), by-int(.42*S)), (cx+int(.44*S), by-int(.50*S))], S, OW)
     d.ellipse([bx, byy, bx+bw, by], fill=GRAY)
     d.ellipse([bx, byy, bx+bw, by], outline=BLACK, width=OW)
     d.ellipse([cx-int(.12*S), byy+int(.42*bh), cx+int(.20*S), by-int(.04*bh)], fill=WHITE)
