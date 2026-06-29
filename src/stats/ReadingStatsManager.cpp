@@ -26,15 +26,26 @@ bool ReadingStatsManager::load() {
     LOG_INF("STATS", "Migrating stats %d -> %d", fileVersion, STATS_FILE_VERSION);
 
     global = GlobalStats{};
-    // GlobalStats (v4=40, v5=44, v6=44). v5 and v6 match in size; the v7 tail
-    // (day ring, streak, goal, pet, speed) stays zero from the value-init above.
-    size_t globalSize = (fileVersion == 4) ? 40 : 44;
+    // Each older layout is a strict prefix of the current struct, so reading the
+    // old byte count into a zero-initialised struct leaves the new tail at 0.
+    // GlobalStats sizes: v4=40, v5/v6=44, v7=808 (v8 appends petLastReadEpoch).
+    size_t globalSize;
+    if (fileVersion == 4) {
+      globalSize = 40;
+    } else if (fileVersion == 7) {
+      globalSize = 808;
+    } else {
+      globalSize = 44;  // v5, v6
+    }
     f.read(&global, globalSize);
     global.version = STATS_FILE_VERSION;
 
     for (uint8_t i = 0; i < global.bookCount; ++i) {
       memset(&books[i], 0, sizeof(BookStatEntry));
-      if (fileVersion == 5) {
+      if (fileVersion == 7) {
+        // v7 entry is already the current 488-byte layout; copy it whole.
+        f.read(&books[i], 488);
+      } else if (fileVersion == 5) {
         // v5 entry was 464 bytes. lastSessionMs (v6) is a new 4-byte field.
         // Read everything up to totalPagesRead (460 bytes)
         f.read(&books[i], 460);
@@ -205,7 +216,7 @@ void ReadingStatsManager::endSession(uint8_t progressPercent, uint32_t sessionPa
   if (longEnoughForLastSession && stats::epochValid(nowEpoch)) {
     const uint16_t today = stats::dayNumber(nowEpoch, stats::utcOffsetSeconds(SETTINGS.clockUtcOffsetQ));
     const uint16_t minutes = static_cast<uint16_t>(elapsedMs / 60000UL);
-    stats::updatePet(global, today);
+    stats::updatePet(global, nowEpoch);
     stats::recordReadingDay(global, today, minutes);
     if (sessionBookIndex < global.bookCount) {
       BookStatEntry& b = books[sessionBookIndex];

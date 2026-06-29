@@ -7,7 +7,7 @@
 static constexpr uint8_t STATS_MAX_BOOK_ENTRIES = 9;
 static constexpr uint8_t STATS_SESSION_RING_SIZE = 7;
 static constexpr uint16_t STATS_DAY_RING_SIZE = 365;
-static constexpr uint8_t STATS_FILE_VERSION = 7;
+static constexpr uint8_t STATS_FILE_VERSION = 8;
 static constexpr uint16_t STATS_DEFAULT_GOAL_MINUTES = 30;
 
 /**
@@ -90,8 +90,14 @@ struct GlobalStats {
   uint8_t petHappiness;
   uint16_t dayMinutes[STATS_DAY_RING_SIZE];
   uint16_t lastSyncedDay;
+  // Epoch (seconds) of the last reading session recorded with a valid clock.
+  // Baseline timestamp for the pet's hourly stat decay; 0 when never set (the
+  // X4 has no RTC, so this is only stamped once time() is NTP-synced).
+  uint32_t petLastReadEpoch;
 };
-static_assert(sizeof(GlobalStats) == 808, "GlobalStats layout changed -- bump STATS_FILE_VERSION");
+static_assert(sizeof(GlobalStats) == 812, "GlobalStats layout changed -- bump STATS_FILE_VERSION");
+static_assert(offsetof(GlobalStats, petLastReadEpoch) == 808,
+              "petLastReadEpoch must append at the v7 tail for migration");
 static_assert(offsetof(GlobalStats, totalReadingMs) == 8, "v6 byte-prefix broken -- breaks migration");
 static_assert(offsetof(GlobalStats, sessionRing) == 16, "v6 byte-prefix broken -- breaks migration");
 static_assert(offsetof(GlobalStats, dayMinutes) == 76, "day-ring offset moved -- update migration");
@@ -205,11 +211,6 @@ inline uint8_t petClampUp(uint8_t value, int delta) {
   return r > 100 ? 100 : static_cast<uint8_t>(r);
 }
 
-inline uint8_t petClampDown(uint8_t value, int delta) {
-  const int r = static_cast<int>(value) - delta;
-  return r < 0 ? 0 : static_cast<uint8_t>(r);
-}
-
 inline constexpr uint16_t kPetStageThresholds[5] = {50, 150, 350, 700, 1200};
 
 inline uint8_t petStageForXp(uint16_t xp) {
@@ -228,13 +229,60 @@ inline uint16_t petXpFloorForStage(uint8_t stage) {
 
 inline uint16_t petXpNextForStage(uint8_t stage) { return stage >= 5 ? 0 : kPetStageThresholds[stage]; }
 
-inline void updatePet(GlobalStats& g, uint16_t today) {
-  if (g.lastReadDay != 0 && today > g.lastReadDay) {
-    const int missed = static_cast<int>(today - g.lastReadDay) - 1;
-    if (missed > 0) {
-      g.petHunger = petClampDown(g.petHunger, 8 * missed);
-      g.petHappiness = petClampDown(g.petHappiness, 6 * missed);
-    }
+// Deterministic hash so a given calendar hour always yields the same decay --
+// the pet screen recomputes decay on every render and must not flicker.
+inline uint32_t petHash32(uint32_t x) {
+  x ^= x >> 16;
+  x *= 0x7feb352dU;
+  x ^= x >> 15;
+  x *= 0x846ca68bU;
+  x ^= x >> 16;
+  return x;
+}
+
+// Random-feeling but reproducible 2..4 percent for a given hour index and stat
+// (0 = hunger, 1 = happiness).
+inline int petHourlyDecayPct(uint32_t hourIndex, uint8_t statSel) {
+  return 2 + static_cast<int>(petHash32(hourIndex * 2u + statSel) % 3u);
+}
+
+// Decays a 0..100 stat across the half-open hour window [fromHour, toHour),
+// removing 2-4% of the remaining value each hour. Integer-only (the ESP32-C3
+// has no FPU); the ceil on each decrement keeps a low stat moving to 0.
+inline uint8_t petDecayStat(uint8_t baseline, uint32_t fromHour, uint32_t toHour, uint8_t statSel) {
+  if (toHour <= fromHour) return baseline;
+  uint32_t hours = toHour - fromHour;
+  if (hours > 720) hours = 720;  // ~30 days at >=2%/h already floors the stat
+  int v = baseline;
+  for (uint32_t i = 0; i < hours && v > 0; ++i) {
+    v -= (v * petHourlyDecayPct(fromHour + i, statSel) + 99) / 100;
+    if (v < 0) v = 0;
+  }
+  return static_cast<uint8_t>(v);
+}
+
+// Hunger/happiness after decaying the stored baseline for the hours elapsed
+// since the last read. No-op without a valid clock or baseline (no RTC).
+inline void petEffectiveStats(const GlobalStats& g, int64_t nowEpoch, uint8_t& hunger, uint8_t& happiness) {
+  hunger = g.petHunger;
+  happiness = g.petHappiness;
+  if (!epochValid(nowEpoch) || g.petLastReadEpoch == 0 || nowEpoch <= static_cast<int64_t>(g.petLastReadEpoch)) return;
+  const uint32_t fromHour = g.petLastReadEpoch / 3600u;
+  const uint32_t toHour = static_cast<uint32_t>(nowEpoch / 3600);
+  hunger = petDecayStat(g.petHunger, fromHour, toHour, 0);
+  happiness = petDecayStat(g.petHappiness, fromHour, toHour, 1);
+}
+
+inline void updatePet(GlobalStats& g, int64_t nowEpoch) {
+  // Decay for the hours since the last read, then refill for this session and
+  // re-stamp the baseline. Decay/stamp only with a valid clock; the refill and
+  // XP always apply so reading still rewards the pet when time() is unsynced.
+  if (epochValid(nowEpoch)) {
+    uint8_t hunger, happiness;
+    petEffectiveStats(g, nowEpoch, hunger, happiness);
+    g.petHunger = hunger;
+    g.petHappiness = happiness;
+    g.petLastReadEpoch = static_cast<uint32_t>(nowEpoch);
   }
   g.petHunger = petClampUp(g.petHunger, 20);
   g.petHappiness = petClampUp(g.petHappiness, 12);

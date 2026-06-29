@@ -633,12 +633,16 @@ void StatsActivity::renderPet(int panelY, int panelH, int screenW) const {
   if (barW > 240) barW = 240;
   const int barX = cx - barW / 2;
 
+  const time_t nowEpoch = time(nullptr);
+  uint8_t hunger, happiness;
+  stats::petEffectiveStats(global, static_cast<int64_t>(nowEpoch), hunger, happiness);
+
   char rbuf[12];
-  snprintf(rbuf, sizeof(rbuf), "%u%%", static_cast<unsigned>(global.petHunger));
-  drawPetBar(renderer, barX, ty, barW, 10, tr(STR_STATS_HUNGER), rbuf, global.petHunger);
+  snprintf(rbuf, sizeof(rbuf), "%u%%", static_cast<unsigned>(hunger));
+  drawPetBar(renderer, barX, ty, barW, 10, tr(STR_STATS_HUNGER), rbuf, hunger);
   ty += barBlock + 8;
-  snprintf(rbuf, sizeof(rbuf), "%u%%", static_cast<unsigned>(global.petHappiness));
-  drawPetBar(renderer, barX, ty, barW, 10, tr(STR_STATS_HAPPINESS), rbuf, global.petHappiness);
+  snprintf(rbuf, sizeof(rbuf), "%u%%", static_cast<unsigned>(happiness));
+  drawPetBar(renderer, barX, ty, barW, 10, tr(STR_STATS_HAPPINESS), rbuf, happiness);
   ty += barBlock + 8;
 
   const uint16_t nextXp = stats::petXpNextForStage(static_cast<uint8_t>(stage));
@@ -658,7 +662,6 @@ void StatsActivity::renderPet(int panelY, int panelH, int screenW) const {
   ty += barBlock + 10;
 
   bool thriving = false;
-  const time_t nowEpoch = time(nullptr);
   if (stats::epochValid(static_cast<int64_t>(nowEpoch))) {
     const uint16_t today =
         stats::dayNumber(static_cast<int64_t>(nowEpoch), stats::utcOffsetSeconds(SETTINGS.clockUtcOffsetQ));

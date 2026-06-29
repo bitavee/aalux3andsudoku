@@ -2,20 +2,21 @@
 
 #include "stats/StatsTypes.h"
 
-// stats.bin v7 binary layout is load-bearing: any change must bump the file
+// stats.bin v8 binary layout is load-bearing: any change must bump the file
 // version + migration. These guard the exact on-disk sizes.
-TEST(StatsTypes, V7StructSizes) {
+TEST(StatsTypes, V8StructSizes) {
   EXPECT_EQ(sizeof(SpeedSample), 4u);
   EXPECT_EQ(sizeof(BookStatEntry), 488u);
-  EXPECT_EQ(sizeof(GlobalStats), 808u);
+  EXPECT_EQ(sizeof(GlobalStats), 812u);
 }
 
-TEST(StatsTypes, V7PrefixMatchesV6) {
-  // The first 44 bytes of GlobalStats and 468 of BookStatEntry must stay
-  // byte-identical to v6 so migration is a pure tail-append.
+TEST(StatsTypes, V8PrefixMatchesPriorVersions) {
+  // Older layouts are strict prefixes so migration is a pure tail-append.
+  // petLastReadEpoch must sit at the v7 size (808) for v7 -> v8 to read cleanly.
   EXPECT_EQ(offsetof(GlobalStats, totalReadingMs), 8u);
   EXPECT_EQ(offsetof(GlobalStats, sessionRing), 16u);
   EXPECT_EQ(offsetof(GlobalStats, dayMinutes), 76u);
+  EXPECT_EQ(offsetof(GlobalStats, petLastReadEpoch), 808u);
   EXPECT_EQ(offsetof(BookStatEntry, progressPercent), 464u);
 }
 
@@ -188,39 +189,59 @@ TEST(StatsAchievements, TimeOfDayBadgesNeedTheRightHour) {
   EXPECT_FALSE(stats::evaluateAchievements(g, -1) & ACH_NIGHT_OWL);  // unknown hour
 }
 
-TEST(StatsPet, ReadingFillsHungerAndHappiness) {
+constexpr int64_t kEpoch = 1750000000;  // a valid post-NTP epoch (year 2025)
+
+TEST(StatsPet, ReadingRefillsAndStampsBaseline) {
   GlobalStats g{};
-  stats::updatePet(g, 20000);  // first feed
+  stats::updatePet(g, kEpoch);  // first feed with a synced clock
   EXPECT_EQ(g.petHunger, 20);
   EXPECT_EQ(g.petHappiness, 12);
+  EXPECT_EQ(g.petLastReadEpoch, static_cast<uint32_t>(kEpoch));
 }
 
-TEST(StatsPet, ConsecutiveReadingKeepsFilling) {
-  GlobalStats g{};
-  g.lastReadDay = 20000;
-  g.petHunger = 20;
-  g.petHappiness = 12;
-  stats::updatePet(g, 20001);  // next day, no gap
-  EXPECT_EQ(g.petHunger, 40);
-  EXPECT_EQ(g.petHappiness, 24);
+TEST(StatsPet, HourlyDecayIsTwoToFourPercent) {
+  EXPECT_EQ(stats::petDecayStat(100, 5000, 5000, 0), 100);  // no hours elapsed
+  const uint8_t oneHour = stats::petDecayStat(100, 5000, 5001, 0);
+  EXPECT_GE(oneHour, 96);  // 100 minus 2..4
+  EXPECT_LE(oneHour, 98);
+  EXPECT_LT(stats::petDecayStat(100, 5000, 5020, 0), oneHour);  // more hours decay further
+  EXPECT_EQ(stats::petDecayStat(100, 0, 720, 0), 0);            // ~30 days unread -> starved
+  // Deterministic so the pet screen recomputes identically across renders.
+  EXPECT_EQ(stats::petDecayStat(100, 5000, 5037, 1), stats::petDecayStat(100, 5000, 5037, 1));
 }
 
-TEST(StatsPet, MissedDaysDecayBeforeFeeding) {
+TEST(StatsPet, EffectiveStatsDecayBetweenReads) {
   GlobalStats g{};
-  g.lastReadDay = 20000;
-  g.petHunger = 20;
-  g.petHappiness = 12;
-  stats::updatePet(g, 20003);  // 2 missed days: -16/-12 -> 4/0, then feed +20/+12 -> 24/12
-  EXPECT_EQ(g.petHunger, 24);
-  EXPECT_EQ(g.petHappiness, 12);
+  g.petHunger = 90;
+  g.petHappiness = 90;
+  g.petLastReadEpoch = static_cast<uint32_t>(kEpoch);
+  uint8_t h, hp;
+  stats::petEffectiveStats(g, kEpoch + 12 * 3600, h, hp);  // 12 hours later
+  EXPECT_LT(h, 90);
+  EXPECT_LT(hp, 90);
+  // Without a valid clock (no RTC yet) the stored baseline shows unchanged.
+  stats::petEffectiveStats(g, 1000, h, hp);
+  EXPECT_EQ(h, 90);
+  EXPECT_EQ(hp, 90);
+}
+
+TEST(StatsPet, NoClockRefillsButDoesNotDecayOrStamp) {
+  GlobalStats g{};
+  g.petHunger = 80;
+  g.petHappiness = 80;
+  g.petLastReadEpoch = static_cast<uint32_t>(kEpoch);
+  stats::updatePet(g, 1000);  // invalid epoch: reading still rewards, no decay
+  EXPECT_EQ(g.petHunger, 100);
+  EXPECT_EQ(g.petHappiness, 92);
+  EXPECT_EQ(g.petLastReadEpoch, static_cast<uint32_t>(kEpoch));  // baseline untouched
 }
 
 TEST(StatsPet, FeedingCapsAtHundred) {
   GlobalStats g{};
-  g.lastReadDay = 20000;
   g.petHunger = 95;
   g.petHappiness = 95;
-  stats::updatePet(g, 20000);  // same day, no decay, +20/+12 capped
+  g.petLastReadEpoch = static_cast<uint32_t>(kEpoch);
+  stats::updatePet(g, kEpoch);  // same instant: no decay, +20/+12 capped
   EXPECT_EQ(g.petHunger, 100);
   EXPECT_EQ(g.petHappiness, 100);
 }
@@ -255,7 +276,7 @@ TEST(StatsPet, XpBarBoundsMatchStages) {
 
 TEST(StatsPet, FeedingGrantsXpAndAdvancesStage) {
   GlobalStats g{};
-  for (int i = 0; i < 5; ++i) stats::updatePet(g, 20000);  // 5 feeds * 10 XP
+  for (int i = 0; i < 5; ++i) stats::updatePet(g, kEpoch);  // 5 feeds * 10 XP
   EXPECT_EQ(g.petXp, 50);
   EXPECT_EQ(g.petStage, 1);
 }
