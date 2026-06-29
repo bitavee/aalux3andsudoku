@@ -95,10 +95,10 @@ void drawStackedCover(GfxRenderer& renderer, int x, int y, int width, int height
 // edge and another at its bottom edge to match the screenshots.
 void drawBottomMenu(GfxRenderer& renderer, const Rect& rect);
 
-// Overlay-only: paints a rounded outline around the focused menu tile, leaving
-// the tile's icon+label (drawn by drawBottomMenu) visible underneath. Drawn on
-// top of the cached framebuffer so callers do not need to repaint the whole
-// menu band on focus moves.
+// Overlay-only: clears the focused menu tile and redraws it as the icon alone,
+// centred, framed by a rounded outline (the label is hidden while focused).
+// Drawn on top of the cached framebuffer so callers do not need to repaint the
+// whole menu band on focus moves.
 void drawMenuSelection(GfxRenderer& renderer, const Rect& menuRect, int selectedIndex);
 
 // Bottom button-hint band: four glyphs (left-arrow, ball, up-arrow, down-arrow)

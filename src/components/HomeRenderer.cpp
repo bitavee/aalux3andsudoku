@@ -212,6 +212,25 @@ static void drawTransferIcon(const GfxRenderer& renderer, int x, int y, int size
   renderer.drawLine(x + size - 1, y + size - 4, x + size - 1, y + size - 2, 1, true);
 }
 
+static void drawMenuTileIcon(const GfxRenderer& renderer, int index, int iconX, int iconY) {
+  switch (index) {
+    case 0:
+      renderer.drawIcon(LibraryIcon, iconX, iconY, kMenuIconSize, kMenuIconSize);
+      break;
+    case 1:
+      drawStatsIcon(renderer, iconX, iconY, kMenuIconSize);
+      break;
+    case 2:
+      drawTransferIcon(renderer, iconX, iconY, kMenuIconSize);
+      break;
+    case 3:
+      renderer.drawIcon(Settings2Icon, iconX, iconY, kMenuIconSize, kMenuIconSize);
+      break;
+    default:
+      break;
+  }
+}
+
 // Looks up the stats entry for `book` by exact bookPath match. ReadingStatsManager
 // stores at most STATS_MAX_BOOK_ENTRIES (=9) books, so this is a cheap linear scan;
 // no caching needed.
@@ -556,22 +575,7 @@ void drawBottomMenu(GfxRenderer& renderer, const Rect& rect) {
     const int textHeight = renderer.getLineHeight(UI_10_FONT_ID);
     const int contentH = kMenuIconSize + kMenuIconLabelGap + textHeight;
     const int iconY = tile.y + (tile.height - contentH) / 2;
-    switch (i) {
-      case 0:
-        renderer.drawIcon(LibraryIcon, iconX, iconY, kMenuIconSize, kMenuIconSize);
-        break;
-      case 1:
-        drawStatsIcon(renderer, iconX, iconY, kMenuIconSize);
-        break;
-      case 2:
-        drawTransferIcon(renderer, iconX, iconY, kMenuIconSize);
-        break;
-      case 3:
-        renderer.drawIcon(Settings2Icon, iconX, iconY, kMenuIconSize, kMenuIconSize);
-        break;
-      default:
-        break;
-    }
+    drawMenuTileIcon(renderer, i, iconX, iconY);
 
     const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, labels[i]);
     const int textX = tile.x + (tile.width - textWidth) / 2;
@@ -584,9 +588,16 @@ void drawMenuSelection(GfxRenderer& renderer, const Rect& menuRect, int selected
   if (selectedIndex < 0 || selectedIndex >= kMenuTilesCount) return;
   const Rect tile = getMenuTileRect(menuRect, selectedIndex);
 
-  // Rounded outline around the focused tile, matching the cover/thumbnail focus
-  // style. The tile's icon+label, drawn by drawBottomMenu (and preserved in the
-  // restored home snapshot), remain visible underneath the outline.
+  // Selected tile: hide the label and show only the icon, centred, framed by a
+  // rounded outline. Clear the tile interior first -- the icon+label drawn by
+  // drawBottomMenu live in the restored home snapshot -- while preserving the
+  // band's top/bottom rules at the tile edges.
+  renderer.fillRect(tile.x, tile.y + 1, tile.width, tile.height - 2, false);
+
+  const int iconX = tile.x + (tile.width - kMenuIconSize) / 2;
+  const int iconY = tile.y + (tile.height - kMenuIconSize) / 2;
+  drawMenuTileIcon(renderer, selectedIndex, iconX, iconY);
+
   constexpr int kCornerRadius = 6;
   constexpr int kInset = 2;
   const int bx = tile.x + kInset;
