@@ -193,7 +193,7 @@ constexpr int64_t kEpoch = 1750000000;  // a valid post-NTP epoch (year 2025)
 
 TEST(StatsPet, ReadingRefillsAndStampsBaseline) {
   GlobalStats g{};
-  stats::updatePet(g, kEpoch);  // first feed with a synced clock
+  stats::updatePet(g, kEpoch, 10);  // first feed with a synced clock
   EXPECT_EQ(g.petHunger, 20);
   EXPECT_EQ(g.petHappiness, 12);
   EXPECT_EQ(g.petLastReadEpoch, static_cast<uint32_t>(kEpoch));
@@ -230,9 +230,10 @@ TEST(StatsPet, NoClockRefillsButDoesNotDecayOrStamp) {
   g.petHunger = 80;
   g.petHappiness = 80;
   g.petLastReadEpoch = static_cast<uint32_t>(kEpoch);
-  stats::updatePet(g, 1000);  // invalid epoch: reading still rewards, no decay
+  stats::updatePet(g, 1000, 10);  // invalid epoch: reading still rewards, no decay
   EXPECT_EQ(g.petHunger, 100);
   EXPECT_EQ(g.petHappiness, 92);
+  EXPECT_GT(g.petXp, 0);                                         // page-based XP applies without a synced clock
   EXPECT_EQ(g.petLastReadEpoch, static_cast<uint32_t>(kEpoch));  // baseline untouched
 }
 
@@ -241,22 +242,22 @@ TEST(StatsPet, FeedingCapsAtHundred) {
   g.petHunger = 95;
   g.petHappiness = 95;
   g.petLastReadEpoch = static_cast<uint32_t>(kEpoch);
-  stats::updatePet(g, kEpoch);  // same instant: no decay, +20/+12 capped
+  stats::updatePet(g, kEpoch, 10);  // same instant: no decay, +20/+12 capped
   EXPECT_EQ(g.petHunger, 100);
   EXPECT_EQ(g.petHappiness, 100);
 }
 
 TEST(StatsPet, StageGrowsWithXp) {
   EXPECT_EQ(stats::petStageForXp(0), 0);  // kitten
-  EXPECT_EQ(stats::petStageForXp(49), 0);
-  EXPECT_EQ(stats::petStageForXp(50), 1);
-  EXPECT_EQ(stats::petStageForXp(450), 3);  // adult cat
-  EXPECT_EQ(stats::petStageForXp(1200), 5);
+  EXPECT_EQ(stats::petStageForXp(499), 0);
+  EXPECT_EQ(stats::petStageForXp(500), 1);
+  EXPECT_EQ(stats::petStageForXp(4000), 3);  // adult cat
+  EXPECT_EQ(stats::petStageForXp(10000), 5);
 }
 
 TEST(StatsPet, XpBarBoundsMatchStages) {
-  for (uint16_t xp : {uint16_t{0}, uint16_t{49}, uint16_t{50}, uint16_t{149}, uint16_t{450}, uint16_t{1199},
-                      uint16_t{1200}, uint16_t{5000}}) {
+  for (uint16_t xp : {uint16_t{0}, uint16_t{499}, uint16_t{500}, uint16_t{1499}, uint16_t{4000}, uint16_t{6499},
+                      uint16_t{10000}, uint16_t{20000}}) {
     const uint8_t stage = stats::petStageForXp(xp);
     const uint16_t floor = stats::petXpFloorForStage(stage);
     const uint16_t next = stats::petXpNextForStage(stage);
@@ -269,16 +270,36 @@ TEST(StatsPet, XpBarBoundsMatchStages) {
     }
   }
   EXPECT_EQ(stats::petXpFloorForStage(0), 0);
-  EXPECT_EQ(stats::petXpNextForStage(0), 50);
-  EXPECT_EQ(stats::petXpFloorForStage(4), 700);
-  EXPECT_EQ(stats::petXpNextForStage(4), 1200);
+  EXPECT_EQ(stats::petXpNextForStage(0), 500);
+  EXPECT_EQ(stats::petXpFloorForStage(4), 6500);
+  EXPECT_EQ(stats::petXpNextForStage(4), 10000);
 }
 
-TEST(StatsPet, FeedingGrantsXpAndAdvancesStage) {
+TEST(StatsPet, XpPerPageStaysInHalfToOneAndHalfBand) {
+  for (uint32_t seed = 0; seed < 256; ++seed) {
+    const uint16_t xp = stats::petXpForPages(1000, seed);  // ~1 XP/page, rolled 0.5x..1.5x
+    EXPECT_GE(xp, 500u);
+    EXPECT_LE(xp, 1500u);
+  }
+  EXPECT_EQ(stats::petXpForPages(0, 42), 0u);                             // no pages, no XP
+  EXPECT_EQ(stats::petXpForPages(250, 7), stats::petXpForPages(250, 7));  // reproducible
+}
+
+TEST(StatsPet, FeedingGrantsPageBasedXp) {
   GlobalStats g{};
-  for (int i = 0; i < 5; ++i) stats::updatePet(g, kEpoch);  // 5 feeds * 10 XP
-  EXPECT_EQ(g.petXp, 50);
-  EXPECT_EQ(g.petStage, 1);
+  stats::updatePet(g, kEpoch, 1000);  // one ~1000-page sitting
+  EXPECT_GE(g.petXp, 500);
+  EXPECT_LE(g.petXp, 1500);
+  EXPECT_EQ(g.petStage, stats::petStageForXp(g.petXp));
+}
+
+TEST(StatsPet, EnoughReadingMaxesTheStage) {
+  GlobalStats g{};
+  for (int session = 0; session < 30; ++session) {
+    stats::updatePet(g, kEpoch + session * 86400, 1000);  // 30 sittings, ~1000 pages each
+  }
+  EXPECT_GE(g.petXp, 10000);  // >= 15000 even at the 0.5x floor
+  EXPECT_EQ(g.petStage, 5);
 }
 
 TEST(StatsCalendar, CivilFromDaysMatchesKnownDates) {

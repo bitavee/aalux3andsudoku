@@ -211,7 +211,7 @@ inline uint8_t petClampUp(uint8_t value, int delta) {
   return r > 100 ? 100 : static_cast<uint8_t>(r);
 }
 
-inline constexpr uint16_t kPetStageThresholds[5] = {50, 150, 350, 700, 1200};
+inline constexpr uint16_t kPetStageThresholds[5] = {500, 1500, 3500, 6500, 10000};
 
 inline uint8_t petStageForXp(uint16_t xp) {
   uint8_t stage = 0;
@@ -273,7 +273,14 @@ inline void petEffectiveStats(const GlobalStats& g, int64_t nowEpoch, uint8_t& h
   happiness = petDecayStat(g.petHappiness, fromHour, toHour, 1);
 }
 
-inline void updatePet(GlobalStats& g, int64_t nowEpoch) {
+inline uint16_t petXpForPages(uint32_t pages, uint32_t seed) {
+  if (pages == 0) return 0;
+  const uint32_t rateMilliPerPage = 500u + (petHash32(seed) % 1001u);
+  const uint64_t xp = (static_cast<uint64_t>(pages) * rateMilliPerPage + 500u) / 1000u;
+  return xp > 0xFFFFu ? static_cast<uint16_t>(0xFFFFu) : static_cast<uint16_t>(xp);
+}
+
+inline void updatePet(GlobalStats& g, int64_t nowEpoch, uint32_t sessionPagesTurned) {
   // Decay for the hours since the last read, then refill for this session and
   // re-stamp the baseline. Decay/stamp only with a valid clock; the refill and
   // XP always apply so reading still rewards the pet when time() is unsynced.
@@ -286,7 +293,8 @@ inline void updatePet(GlobalStats& g, int64_t nowEpoch) {
   }
   g.petHunger = petClampUp(g.petHunger, 20);
   g.petHappiness = petClampUp(g.petHappiness, 12);
-  g.petXp = saturatingAddU16(g.petXp, 10);
+  const uint32_t xpSeed = static_cast<uint32_t>(nowEpoch) + g.totalSessionCount * 7919u + sessionPagesTurned;
+  g.petXp = saturatingAddU16(g.petXp, petXpForPages(sessionPagesTurned, xpSeed));
   g.petStage = petStageForXp(g.petXp);
 }
 

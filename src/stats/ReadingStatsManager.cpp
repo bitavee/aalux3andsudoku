@@ -216,7 +216,7 @@ void ReadingStatsManager::endSession(uint8_t progressPercent, uint32_t sessionPa
   if (longEnoughForLastSession && stats::epochValid(nowEpoch)) {
     const uint16_t today = stats::dayNumber(nowEpoch, stats::utcOffsetSeconds(SETTINGS.clockUtcOffsetQ));
     const uint16_t minutes = static_cast<uint16_t>(elapsedMs / 60000UL);
-    stats::updatePet(global, nowEpoch);
+    stats::updatePet(global, nowEpoch, sessionPagesTurned);
     stats::recordReadingDay(global, today, minutes);
     if (sessionBookIndex < global.bookCount) {
       BookStatEntry& b = books[sessionBookIndex];
