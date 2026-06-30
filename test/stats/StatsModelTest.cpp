@@ -248,21 +248,24 @@ TEST(StatsPet, FeedingCapsAtHundred) {
 }
 
 TEST(StatsPet, StageGrowsWithXp) {
-  EXPECT_EQ(stats::petStageForXp(0), 0);  // kitten
-  EXPECT_EQ(stats::petStageForXp(499), 0);
-  EXPECT_EQ(stats::petStageForXp(500), 1);
-  EXPECT_EQ(stats::petStageForXp(4000), 3);  // adult cat
-  EXPECT_EQ(stats::petStageForXp(10000), 5);
+  EXPECT_EQ(stats::petStageForXp(0), 0);
+  EXPECT_EQ(stats::petStageForXp(299), 0);
+  EXPECT_EQ(stats::petStageForXp(300), 1);
+  EXPECT_EQ(stats::petStageForXp(1300), 3);  // tiger cub
+  EXPECT_EQ(stats::petStageForXp(5500), 6);  // dragon egg
+  EXPECT_EQ(stats::petStageForXp(29999), 9);
+  EXPECT_EQ(stats::petStageForXp(30000), 10);  // elder dragon (max)
+  EXPECT_EQ(stats::petStageForXp(65535), stats::kPetStageMax);
 }
 
 TEST(StatsPet, XpBarBoundsMatchStages) {
-  for (uint16_t xp : {uint16_t{0}, uint16_t{499}, uint16_t{500}, uint16_t{1499}, uint16_t{4000}, uint16_t{6499},
-                      uint16_t{10000}, uint16_t{20000}}) {
+  for (uint16_t xp : {uint16_t{0}, uint16_t{299}, uint16_t{300}, uint16_t{3499}, uint16_t{5500}, uint16_t{13000},
+                      uint16_t{29999}, uint16_t{30000}, uint16_t{65535}}) {
     const uint8_t stage = stats::petStageForXp(xp);
     const uint16_t floor = stats::petXpFloorForStage(stage);
     const uint16_t next = stats::petXpNextForStage(stage);
     EXPECT_LE(floor, xp);
-    if (stage >= 5) {
+    if (stage >= stats::kPetStageMax) {
       EXPECT_EQ(next, 0);  // max stage has no next threshold
     } else {
       EXPECT_LT(xp, next);
@@ -270,9 +273,10 @@ TEST(StatsPet, XpBarBoundsMatchStages) {
     }
   }
   EXPECT_EQ(stats::petXpFloorForStage(0), 0);
-  EXPECT_EQ(stats::petXpNextForStage(0), 500);
-  EXPECT_EQ(stats::petXpFloorForStage(4), 6500);
-  EXPECT_EQ(stats::petXpNextForStage(4), 10000);
+  EXPECT_EQ(stats::petXpNextForStage(0), 300);
+  EXPECT_EQ(stats::petXpFloorForStage(9), 20000);
+  EXPECT_EQ(stats::petXpNextForStage(9), 30000);
+  EXPECT_EQ(stats::petXpNextForStage(stats::kPetStageMax), 0);
 }
 
 TEST(StatsPet, XpPerPageStaysInHalfToOneAndHalfBand) {
@@ -295,11 +299,27 @@ TEST(StatsPet, FeedingGrantsPageBasedXp) {
 
 TEST(StatsPet, EnoughReadingMaxesTheStage) {
   GlobalStats g{};
-  for (int session = 0; session < 30; ++session) {
-    stats::updatePet(g, kEpoch + session * 86400, 1000);  // 30 sittings, ~1000 pages each
+  for (int session = 0; session < 100; ++session) {
+    stats::updatePet(g, kEpoch + session * 86400, 1000);  // 100 sittings, ~1000 pages each
   }
-  EXPECT_GE(g.petXp, 10000);  // >= 15000 even at the 0.5x floor
-  EXPECT_EQ(g.petStage, 5);
+  EXPECT_GE(g.petXp, 30000);  // >= 50000 even at the 0.5x floor
+  EXPECT_EQ(g.petStage, stats::kPetStageMax);
+}
+
+TEST(StatsPet, LevelSpansOneToHundred) {
+  EXPECT_EQ(stats::petLevelForXp(0), 1);
+  EXPECT_EQ(stats::petLevelForXp(stats::kPetMaxXp), 100);
+  EXPECT_EQ(stats::petLevelForXp(65535), 100);  // saturates, never exceeds 100
+  EXPECT_GE(stats::petLevelForXp(15000), 49);
+  EXPECT_LE(stats::petLevelForXp(15000), 51);
+  uint8_t prev = 0;
+  for (uint32_t xp = 0; xp <= 30000; xp += 250) {
+    const uint8_t lv = stats::petLevelForXp(static_cast<uint16_t>(xp));
+    EXPECT_GE(lv, prev);  // monotonic non-decreasing
+    EXPECT_GE(lv, 1);
+    EXPECT_LE(lv, 100);
+    prev = lv;
+  }
 }
 
 TEST(StatsCalendar, CivilFromDaysMatchesKnownDates) {

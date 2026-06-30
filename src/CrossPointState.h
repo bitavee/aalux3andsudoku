@@ -12,6 +12,7 @@ class CrossPointState {
   uint8_t lastSleepImage = UINT8_MAX;  // UINT8_MAX = unset sentinel
   uint8_t readerActivityLoadCount = 0;
   bool lastSleepFromReader = false;
+  uint8_t lastShownPetStage = UINT8_MAX;
   ~CrossPointState() = default;
 
   // Get singleton instance

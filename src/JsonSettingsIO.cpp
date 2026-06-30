@@ -73,6 +73,7 @@ bool JsonSettingsIO::saveState(const CrossPointState& s, const char* path) {
   doc["lastSleepImage"] = s.lastSleepImage;
   doc["readerActivityLoadCount"] = s.readerActivityLoadCount;
   doc["lastSleepFromReader"] = s.lastSleepFromReader;
+  doc["lastShownPetStage"] = s.lastShownPetStage;
 
   String json;
   serializeJson(doc, json);
@@ -91,6 +92,7 @@ bool JsonSettingsIO::loadState(CrossPointState& s, const char* json) {
   s.lastSleepImage = doc["lastSleepImage"] | (uint8_t)UINT8_MAX;
   s.readerActivityLoadCount = doc["readerActivityLoadCount"] | (uint8_t)0;
   s.lastSleepFromReader = doc["lastSleepFromReader"] | false;
+  s.lastShownPetStage = doc["lastShownPetStage"] | (uint8_t)UINT8_MAX;
   return true;
 }
 

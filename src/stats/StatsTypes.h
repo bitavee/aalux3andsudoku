@@ -211,11 +211,14 @@ inline uint8_t petClampUp(uint8_t value, int delta) {
   return r > 100 ? 100 : static_cast<uint8_t>(r);
 }
 
-inline constexpr uint16_t kPetStageThresholds[5] = {500, 1500, 3500, 6500, 10000};
+inline constexpr uint16_t kPetStageThresholds[] = {300, 700, 1300, 2200, 3500, 5500, 8500, 13000, 20000, 30000};
+inline constexpr uint8_t kPetStageMax = sizeof(kPetStageThresholds) / sizeof(kPetStageThresholds[0]);
+inline constexpr uint8_t kPetStageCount = kPetStageMax + 1;
+inline constexpr uint16_t kPetMaxXp = kPetStageThresholds[kPetStageMax - 1];
 
 inline uint8_t petStageForXp(uint16_t xp) {
   uint8_t stage = 0;
-  for (uint8_t i = 0; i < 5; ++i) {
+  for (uint8_t i = 0; i < kPetStageMax; ++i) {
     if (xp >= kPetStageThresholds[i]) stage = static_cast<uint8_t>(i + 1);
   }
   return stage;
@@ -223,11 +226,16 @@ inline uint8_t petStageForXp(uint16_t xp) {
 
 inline uint16_t petXpFloorForStage(uint8_t stage) {
   if (stage == 0) return 0;
-  if (stage > 5) stage = 5;
+  if (stage > kPetStageMax) stage = kPetStageMax;
   return kPetStageThresholds[stage - 1];
 }
 
-inline uint16_t petXpNextForStage(uint8_t stage) { return stage >= 5 ? 0 : kPetStageThresholds[stage]; }
+inline uint16_t petXpNextForStage(uint8_t stage) { return stage >= kPetStageMax ? 0 : kPetStageThresholds[stage]; }
+
+inline uint8_t petLevelForXp(uint16_t xp) {
+  if (xp >= kPetMaxXp) return 100;
+  return static_cast<uint8_t>(1 + (static_cast<uint32_t>(xp) * 99u) / kPetMaxXp);
+}
 
 // Deterministic hash so a given calendar hour always yields the same decay --
 // the pet screen recomputes decay on every render and must not flicker.

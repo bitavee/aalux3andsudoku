@@ -14,6 +14,7 @@
 
 #include "CatSprites.h"
 #include "CrossPointSettings.h"
+#include "CrossPointState.h"
 #include "DetailedStatsActivity.h"  // detailedStatistics
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
@@ -600,12 +601,18 @@ static void drawPetBar(GfxRenderer& r, int x, int y, int w, int h, const char* l
   if (fillW > 0) r.fillRectDither(x + 1, by + 1, fillW, h - 2, Black);
 }
 
-static const char* petStageName(int stage) {
-  if (stage <= 1) return tr(STR_STATS_PET_KITTEN);
-  if (stage <= 3) return tr(STR_STATS_PET_YOUNG);
-  if (stage <= 4) return tr(STR_STATS_PET_ADULT);
-  return tr(STR_STATS_PET_ELDER);
-}
+struct PetVisual {
+  StrId nameKey;
+  const CatSprite* sprite;
+};
+
+static constexpr PetVisual kPetVisuals[stats::kPetStageCount] = {
+    {StrId::STR_PET_CAT_KITTEN, &kCatKitten},       {StrId::STR_PET_CAT_ADOLESCENT, &kCatTeen},
+    {StrId::STR_PET_CAT_ADULT, &kCatAdult},         {StrId::STR_PET_TIGER_CUB, &kTigerCub},
+    {StrId::STR_PET_TIGER_ADOLESCENT, &kTigerTeen}, {StrId::STR_PET_TIGER_ADULT, &kTigerAdult},
+    {StrId::STR_PET_DRAGON_EGG, &kDragonEgg},       {StrId::STR_PET_DRAGON_HATCHLING, &kDragonHatch},
+    {StrId::STR_PET_DRAGON_JUVENILE, &kDragonJuv},  {StrId::STR_PET_DRAGON_ADULT, &kDragonAdult},
+    {StrId::STR_PET_DRAGON_ELDER, &kDragonElder}};
 
 void StatsActivity::renderPet(int panelY, int panelH, int screenW) const {
   const auto& global = StatsManager.getGlobal();
@@ -615,9 +622,15 @@ void StatsActivity::renderPet(int panelY, int panelH, int screenW) const {
   const int lh12 = renderer.getLineHeight(UI_12_FONT_ID);
   char buf[48];
 
-  const int stage = global.petStage > 5 ? 5 : global.petStage;
+  const int stage = stats::petStageForXp(global.petXp);
+  const uint8_t curStage = static_cast<uint8_t>(stage);
+  const bool justEvolved = APP_STATE.lastShownPetStage != UINT8_MAX && curStage > APP_STATE.lastShownPetStage;
+  if (curStage != APP_STATE.lastShownPetStage) {
+    APP_STATE.lastShownPetStage = curStage;
+    if (justEvolved) APP_STATE.saveToFile();
+  }
   const int cx = screenW / 2;
-  const CatSprite& cat = (stage < 2) ? kCatKitten : (stage < 4) ? kCatSitting : kCatLoaf;
+  const CatSprite& cat = *kPetVisuals[stage].sprite;
   const int barBlock = lh10 + 1 + 10;
   const int blockH = cat.h + 8 + lh12 + 8 + barBlock + 8 + barBlock + 8 + barBlock + 10 + lh12;
   int catTop = panelY + (panelH - blockH) / 2;
@@ -625,7 +638,8 @@ void StatsActivity::renderPet(int panelY, int panelH, int screenW) const {
   drawCatSprite(renderer, cat, cx - cat.w / 2, catTop);
   int ty = catTop + cat.h + 8;
 
-  snprintf(buf, sizeof(buf), "%s  %s %d", petStageName(stage), tr(STR_STATS_PET_LEVEL), stage);
+  snprintf(buf, sizeof(buf), "%s  %s %u", I18n::getInstance().get(kPetVisuals[stage].nameKey), tr(STR_STATS_PET_LEVEL),
+           static_cast<unsigned>(stats::petLevelForXp(global.petXp)));
   renderer.drawCenteredText(UI_12_FONT_ID, ty, buf, true);
   ty += lh12 + 8;
 
@@ -667,7 +681,9 @@ void StatsActivity::renderPet(int panelY, int panelH, int screenW) const {
         stats::dayNumber(static_cast<int64_t>(nowEpoch), stats::utcOffsetSeconds(SETTINGS.clockUtcOffsetQ));
     thriving = stats::streakAlive(global, today) && global.currentStreakDays > 0;
   }
-  renderer.drawCenteredText(UI_12_FONT_ID, ty, thriving ? tr(STR_STATS_PET_THRIVING) : tr(STR_STATS_PET_RESTING), true);
+  const char* status =
+      justEvolved ? tr(STR_PET_EVOLVED) : (thriving ? tr(STR_STATS_PET_THRIVING) : tr(STR_STATS_PET_RESTING));
+  renderer.drawCenteredText(UI_12_FONT_ID, ty, status, true);
 }
 
 void StatsActivity::renderCalendar(int panelY, int panelH, int screenW) const {
