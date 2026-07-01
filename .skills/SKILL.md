@@ -14,6 +14,7 @@ Repo: `/Users/disrael/Projects/personal/xteink/aalu`. Version: see `[aalu] versi
 - Justify any new heap allocation. Explain memory/perf claims by mechanism (DRAM vs IRAM, etc.).
 - After any change: instruct the user how to verify (heap, cache, all 4 orientations).
 - **Always build + run host tests after changes.** See [Testing Workflow](#testing-workflow). No exceptions, even one-line edits.
+- **Keep `README.md` in sync with features.** Whenever you add, remove, or materially change a user-facing feature, update `README.md` in the same change — its "What's new in AALU" list, the "Using it" reference, and the "Roadmap" (move shipped items into the ✅ landed list). If the change is visual, refresh the affected screenshot in `docs/images/screenshots/`: capture it in the emulator (Power+Down — `P`+`↓` — writes a BMP to `sdcard/screenshots/`), convert with `sips -s format jpeg <in>.bmp --out docs/images/screenshots/<name>.jpeg`, or ask the user to regenerate it.
 
 ---
 

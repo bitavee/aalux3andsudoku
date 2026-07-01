@@ -8,10 +8,15 @@ AALU is a custom firmware for the Xteink X4 e-paper reader, built for people who
 
 ## Screenshots
 
-| Home | Reading | Series viewer |
+| Home | Bookshelf | Series viewer |
 | :---: | :---: | :---: |
-| ![Home screen — current read with progress bar, library grid with series-count badges, and the bottom menu](./docs/images/screenshots/home.jpeg) | ![Reading view — chapter heading, body text, and a footer with battery, chapter name, page count, and progress](./docs/images/screenshots/reading.jpeg) | ![Series viewer — all books in a series shown in reading order](./docs/images/screenshots/series-viewer.jpeg) |
-| Hero book with a progress bar, time-left and time-read readouts, "Library" grid with series-count badges, and the bottom menu (Files / Statistics / Transfer / Settings). | In-book reading view with chapter title, body text, and a footer that shows battery, current chapter, page in chapter, and overall progress. | Drill-in series viewer reached from any stack tile — every member of the series shown in reading order. |
+| ![Home screen — hero read with a progress bar, recents row with series-count badges, and the bottom menu](./docs/images/screenshots/home.jpeg) | ![Bookshelf — the full library as a cover grid with series stacks collapsed behind count badges](./docs/images/screenshots/bookshelf.jpeg) | ![Series viewer — every book in a series in reading order with per-book status badges](./docs/images/screenshots/series-viewer.jpeg) |
+| Hero book with a progress bar plus time-read / time-left readouts, a recents row with series-count badges, and the bottom menu (Bookshelf / Stats / Transfer / Settings). | Your whole library as a grid — every book, with series collapsed under a count badge. Long-press to delete, long-press Back to rescan. | Drill into a series stack: every member in reading order with a status badge — ▶ for the book you're reading, ✓ for finished. |
+
+| Reading | Statistics — Calendar |
+| :---: | :---: |
+| ![Reading view — chapter heading, body text, and a footer with battery, chapter, page, and progress](./docs/images/screenshots/reading.jpeg) | ![Stats calendar — a monthly reading-activity heatmap shaded by minutes read](./docs/images/screenshots/stats-calendar.jpeg) |
+| In-book reading view with chapter title, body text, and a footer that shows battery, current chapter, page in chapter, and overall progress. | One of six stats views: a month heatmap shading each day by minutes read (Light → Avid). Page back through months with the side buttons. |
 
 ---
 
@@ -39,17 +44,22 @@ Everything below is on top of what Seek Reader / CrossPoint already do.
 ### Organizing your library
 - **Automatic series grouping.** Books that share `calibre:series` or EPUB 3 collection metadata are bundled into a single home tile with a count badge. Folder-name fallback handles non-tagged collections.
 - **Series viewer.** Open a stack tile to see every member of the series in reading order, with the most-recently-read book pre-focused for "continue reading" in one tap.
+- **Bookshelf.** A full-library grid of every book on the card — not just recents — with series stacks collapsed behind a count badge. Long-press Confirm to delete a book, long-press Back to rescan the SD card.
+- **Cover progress at a glance.** Individual covers carry a thin progress bar while you're mid-book and a check badge once finished — on Recents, Bookshelf, and the series viewer. Series stacks show their book-count badge instead.
 - **Remove from recents.** Long-press Confirm (≥1 second) on a recents tile to clear it from home without deleting the file or losing your progress cache.
 
 ### Reading statistics, redone
-- **All-time dashboard** — total reading hours and finished-books count.
-- **Reading vs. Finished** views, toggled with the Right button.
+- **Six stat views**, cycled with the Right button: Reading list, Finished list, Badges, Pet, Calendar, and a year-in-review "Wrapped".
+- **All-time dashboard** — total reading hours, finished-books count, and current / longest streak.
 - **Per-book analytics** — last session duration, total reading time, average pages-per-minute.
+- **Reading companion.** A pet that levels up as you read: XP scales with pages turned and it evolves across 11 stages, cat → tiger → dragon (up to 30,000 XP). Its hunger and happiness decay hour-by-hour since your last session, so a steady habit keeps it thriving.
+- **Reading calendar.** A month heatmap shading each day by minutes read (Light → Avid reader); page back through months with the side buttons — including months you didn't read.
+- **Achievement badges.** Streaks (3 / 7 / 30 / 100 days), books finished (1 / 10 / 25 / 50), pages turned (1k / 10k / 100k), reading hours (10 / 50 / 100), plus early-bird and night-owl.
 - **Stale-book filter** — books at 0% with 0 reading time stay hidden until you actually read them.
 - **Deep-sleep protection** — sessions are saved on power-off, not lost.
 - **Session guarding** — 3-minute minimum prevents short peeks from polluting the stats.
 - **Self-healing progress** — finished books correctly read 100% (not 99%) across home, status bar, and stats.
-- Binary migration engine for `stats.bin` (v4/v5 → v6) on firmware upgrade.
+- Binary migration engine keeps `stats.bin` current across firmware upgrades (now v8, after the pet and calendar data added new fields).
 
 ### Reader experience
 - **In-reader Quick Settings overlay (Aa)** — fonts, sizes, margins, line spacing, layout — all adjusted *over* the book text. No full-screen settings round-trip, no flash hammering (writes are deferred), no E-ink ghosting.
@@ -134,9 +144,9 @@ python3 scripts/debugging_monitor.py
 See [USER_GUIDE.md](./USER_GUIDE.md) for the day-to-day operation reference. The short version:
 
 - **Confirm** on a tile to open a book, a series viewer, or a menu item.
-- **Long-press Confirm** on a recents tile to remove it from home.
-- **Back** to go up a level; **long-press Back** in the reader to jump home.
-- **Right** in stats to toggle between Reading and Finished views.
+- **Long-press Confirm** on a recents tile to remove it from home (or on a Bookshelf book to delete it).
+- **Back** to go up a level; **long-press Back** in the reader to jump home, or on the Bookshelf to rescan the card.
+- **Right** in Stats cycles the six views (Reading, Finished, Badges, Pet, Calendar, Wrapped); **Up/Down** page months in the Calendar.
 - **Aa** while reading to open the Quick Settings overlay.
 
 ---
@@ -180,12 +190,14 @@ For the gory format details, see [`docs/file-formats.md`](./docs/file-formats.md
 
 AALU is **actively developed** — I'm using it as my daily reader and shaping it as I go. Recent work has landed:
 
-- ✅ Long-press to remove from recents
+- ✅ Reading companion (pet) that evolves cat → tiger → dragon as you read
+- ✅ Stats calendar heatmap, achievement badges, and a "Wrapped" year-in-review
+- ✅ Cover progress bars + completed badges on Recents, Bookshelf, and the series viewer
+- ✅ Bookshelf — a full-library grid with series stacks and long-press delete
 - ✅ Series stacks on home + drill-in series viewer
 - ✅ Statistics overhaul (Reading / Finished views, stale-book filter)
+- ✅ Long-press to remove from recents
 - ✅ 100%-not-99% progress fix across home / stats / reader
-- ✅ Heap fix for File Transfer launched from home
-- ✅ Cover rendering consistency across home, groups, and stats
 
 On the radar:
 
