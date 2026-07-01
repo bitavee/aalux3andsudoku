@@ -191,24 +191,20 @@ void formatTimeApprox(char* buf, size_t len, uint64_t ms) {
 // of bundling more bitmaps for those.
 
 static void drawStatsIcon(const GfxRenderer& renderer, int x, int y, int size) {
-  // Ascending bars with a rising trend line + arrowhead (an analytics glyph).
-  const int baseY = y + size - 2;
-  const int barW = 5;
-  const int gap = 5;
-  const int bx0 = x + 2;
-  const int barH[3] = {size / 4, (size * 9) / 20, (size * 13) / 20};
-  for (int i = 0; i < 3; ++i) {
-    const int bx = bx0 + i * (barW + gap);
+  // Clean ascending bar chart on a baseline -- three centered bars, no trend
+  // line or arrowhead (the old glyph read as cluttered at 32 px).
+  constexpr int kBars = 3;
+  const int barW = size / 5;
+  const int gap = size / 8;
+  const int groupW = kBars * barW + (kBars - 1) * gap;
+  const int baseY = y + size - 3;
+  const int barH[kBars] = {size * 5 / 16, size * 15 / 32, size * 21 / 32};
+  int bx = x + (size - groupW) / 2;
+  for (int i = 0; i < kBars; ++i) {
     renderer.fillRect(bx, baseY - barH[i], barW, barH[i], true);
+    bx += barW + gap;
   }
-  renderer.drawLine(x, baseY, x + size, baseY, 1, true);
-  const int sx = bx0 + barW / 2;
-  const int sy = baseY - barH[0] - 3;
-  const int ex = bx0 + 2 * (barW + gap) + barW / 2;
-  const int ey = baseY - barH[2] - 5;
-  renderer.drawLine(sx, sy, ex, ey, 2, true);
-  renderer.drawLine(ex, ey, ex - 5, ey, 2, true);
-  renderer.drawLine(ex, ey, ex, ey + 5, 2, true);
+  renderer.drawLine(x + 1, baseY + 1, x + size - 1, baseY + 1, 1, true);
 }
 
 static void drawTransferIcon(const GfxRenderer& renderer, int x, int y, int size) {
