@@ -18,6 +18,7 @@
 #include "activities/ActivityManager.h"
 #include "activities/reader/ReaderUtils.h"  // for GO_HOME_MS
 #include "activities/util/ConfirmationActivity.h"
+#include "components/HomeProgressCache.h"
 #include "components/HomeRenderer.h"  // kThumbnailCoverHeight, drawStackedCover, drawBottomButtonHints
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -74,6 +75,7 @@ void BookshelfActivity::onEnter() {
 void BookshelfActivity::onExit() {
   Activity::onExit();
   freeCoverBuffer();
+  HomeProgressCache::getInstance().clear();
   entries.clear();
   tiles.clear();
   tiles.shrink_to_fit();
@@ -495,6 +497,16 @@ void BookshelfActivity::renderGrid() {
     const Tile& tile = tiles[i];
     HomeRenderer::drawStackedCover(renderer, coverX, coverY, kCoverW, kCoverH, tile.thumbPath,
                                    static_cast<int>(tile.entryIndices.size()));
+
+    // Individual books get the progress overlay (bottom bar / completed check);
+    // series stacks show their count badge only. Progress is looked up lazily
+    // for the visible tile so the shelf never parses book.bin for all 300 books.
+    if (tile.entryIndices.size() == 1) {
+      const std::string& bookPath = entries[tile.entryIndices.front()].path;
+      HomeProgressCache::getInstance().loadProgressFor(bookPath);
+      HomeRenderer::drawCoverProgressOverlay(renderer, coverX, coverY, kCoverW, kCoverH,
+                                             HomeProgressCache::getInstance().getProgress(bookPath));
+    }
 
     // 2-line wrapped title under the cover (or series name for stacks).
     const int labelY = coverY + kCoverH + kLabelGap;

@@ -44,6 +44,8 @@ constexpr int kThumbnailCoverHeight = 210;
 
 constexpr int kCoverCornerRadius = 6;
 
+constexpr int8_t kCompletedPercent = 95;
+
 // Each row draw fn renders only the *unselected* state so that the activity
 // can store the framebuffer once, then on every focus change just restore the
 // buffer and overlay a selection border. This keeps navigation snappy on
@@ -119,7 +121,23 @@ void drawSelectionBorder(GfxRenderer& renderer, const Rect& inner, bool roundTop
 // across hero, boot resume card, and stats list so the indicator looks the
 // same wherever it shows up. `percent` is clamped to [0,100]; pass <0 to draw
 // just the empty outline.
-void drawRoundedProgressBar(GfxRenderer& renderer, int x, int y, int width, int height, int8_t percent);
+void drawRoundedProgressBar(const GfxRenderer& renderer, int x, int y, int width, int height, int8_t percent,
+                            int maxRadius = 3);
+
+// Completed check badge (black disc + white check) anchored to the cover's
+// top-right, identical to the series viewer's "finished" glyph.
+void drawCompletedBadge(const GfxRenderer& renderer, int coverX, int coverY, int coverW);
+
+// Thin progress pill floating inside the cover (inset from the left, right, and
+// bottom edges) with a white backing so it stays legible over any cover art.
+// `percent` is clamped to [0,100].
+void drawCoverProgressBar(const GfxRenderer& renderer, int coverX, int coverY, int coverW, int coverH, int8_t percent);
+
+// Per-book cover overlay for individual books only (callers must skip series
+// stacks): completed check badge at/above kCompletedPercent, a bottom progress
+// bar for 1..kCompletedPercent-1, nothing for 0 or Unknown(<0).
+void drawCoverProgressOverlay(const GfxRenderer& renderer, int coverX, int coverY, int coverW, int coverH,
+                              int8_t percent);
 
 // Geometry helpers - the activity uses these to figure out where the focused
 // element actually sits on screen so it can call drawSelectionBorder.

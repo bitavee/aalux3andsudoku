@@ -55,10 +55,17 @@ enum class BookStatus { Unread, Reading, Finished };
 
 BookStatus statusForBook(const RecentBook& book) {
   if (book.path.empty()) return BookStatus::Unread;
+  // Prefer HomeProgressCache: it is byte-accurate, clamps to 100 at end-of-book,
+  // and covers every opened EPUB (not just the 9-entry stats ring). Fall back to
+  // stats only when it has no answer (non-EPUB, or never opened this session).
+  const int8_t pct = HomeProgressCache::getInstance().getProgress(book.path);
+  if (pct >= HomeRenderer::kCompletedPercent) return BookStatus::Finished;
+  if (pct > 0) return BookStatus::Reading;
+  if (pct == 0) return BookStatus::Unread;
   for (uint8_t i = 0; i < StatsManager.getBookCount(); ++i) {
     const BookStatEntry& entry = StatsManager.getBook(i);
     if (std::strncmp(entry.bookPath, book.path.c_str(), sizeof(entry.bookPath)) == 0) {
-      if (entry.progressPercent >= 95) return BookStatus::Finished;
+      if (entry.progressPercent >= HomeRenderer::kCompletedPercent) return BookStatus::Finished;
       if (entry.progressPercent > 0) return BookStatus::Reading;
       return BookStatus::Unread;
     }
@@ -125,23 +132,6 @@ void formatBadgeLabel(const std::string& seriesIndex, int fallbackPosition, char
   std::snprintf(buf, bufSize, "%d", fallbackPosition);
 }
 
-// Two-stroke checkmark inscribed in a circle of `radius`, used as the
-// "finished" status glyph. Mirrors the hero's drawCheckmark style so the two
-// indicators read as one design language.
-void drawCheckGlyph(const GfxRenderer& renderer, int cx, int cy, int radius) {
-  if (radius <= 3) return;
-  const float scale = static_cast<float>(radius) * 0.75f;
-  const int leftX = cx - static_cast<int>(scale * 0.55f);
-  const int leftY = cy + static_cast<int>(scale * 0.05f);
-  const int vertexX = cx - static_cast<int>(scale * 0.10f);
-  const int vertexY = cy + static_cast<int>(scale * 0.45f);
-  const int rightX = cx + static_cast<int>(scale * 0.65f);
-  const int rightY = cy - static_cast<int>(scale * 0.45f);
-  const int thickness = std::max(2, radius / 6);
-  renderer.drawLine(leftX, leftY, vertexX, vertexY, thickness, /*state=*/false);
-  renderer.drawLine(vertexX, vertexY, rightX, rightY, thickness, /*state=*/false);
-}
-
 // Filled right-pointing play triangle, used as the "currently reading" glyph
 // next to the index number. Drawn in white (state=false) on the black badge.
 void drawPlayTriangle(const GfxRenderer& renderer, int cx, int cy, int size) {
@@ -159,11 +149,7 @@ void drawStatusBadge(const GfxRenderer& renderer, int coverX, int coverY, const 
                      int fallbackPosition, BookStatus status) {
   if (status == BookStatus::Finished) {
     // Pure check disc -- no number; the "done" signal is the whole point.
-    const int radius = 11;
-    const int cx = coverX + kCoverW - radius - 2;
-    const int cy = coverY + radius + 2;
-    fillDisc(renderer, cx, cy, radius, /*black=*/true);
-    drawCheckGlyph(renderer, cx, cy, radius);
+    HomeRenderer::drawCompletedBadge(renderer, coverX, coverY, kCoverW);
     return;
   }
 
@@ -533,6 +519,12 @@ void SeriesViewerActivity::render(RenderLock&&) {
     drawTileCover(renderer, coverX, coverY, books[i]);
     const BookStatus status = statusForBook(books[i]);
     drawStatusBadge(renderer, coverX, coverY, books[i].seriesIndex, /*fallbackPosition=*/i + 1, status);
+    if (status == BookStatus::Reading) {
+      const int8_t pct = HomeProgressCache::getInstance().getProgress(books[i].path);
+      if (pct > 0 && pct < HomeRenderer::kCompletedPercent) {
+        HomeRenderer::drawCoverProgressBar(renderer, coverX, coverY, kCoverW, kCoverH, pct);
+      }
+    }
 
     // Title under the cover, wrapped to at most 2 lines and centred. Two-line
     // wrap (vs single-line truncation) preserves the trailing phrase that

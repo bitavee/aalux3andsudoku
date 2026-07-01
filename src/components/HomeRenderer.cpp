@@ -84,6 +84,23 @@ void fillDisc(const GfxRenderer& renderer, int cx, int cy, int radius, bool blac
   }
 }
 
+// Two-stroke checkmark inscribed in a circle of `radius`, drawn in white
+// (state=false) for the "finished" badge. Kept in sync with the series viewer's
+// original glyph so the completed indicator reads identically everywhere.
+void drawCheckGlyph(const GfxRenderer& renderer, int cx, int cy, int radius) {
+  if (radius <= 3) return;
+  const float scale = static_cast<float>(radius) * 0.75f;
+  const int leftX = cx - static_cast<int>(scale * 0.55f);
+  const int leftY = cy + static_cast<int>(scale * 0.05f);
+  const int vertexX = cx - static_cast<int>(scale * 0.10f);
+  const int vertexY = cy + static_cast<int>(scale * 0.45f);
+  const int rightX = cx + static_cast<int>(scale * 0.65f);
+  const int rightY = cy - static_cast<int>(scale * 0.45f);
+  const int thickness = std::max(2, radius / 6);
+  renderer.drawLine(leftX, leftY, vertexX, vertexY, thickness, /*state=*/false);
+  renderer.drawLine(vertexX, vertexY, rightX, rightY, thickness, /*state=*/false);
+}
+
 // Round badge with a small number on the top-right of a cover. Used on the
 // home thumbnail row to mark a series stack with the total book count, and
 // inside the SeriesViewer to show each book's series index. The badge is a
@@ -454,39 +471,6 @@ void drawDivider(GfxRenderer& renderer, const Rect& rect) {
   renderer.drawLine(x1, rect.y + kHalfSeparation, x2, rect.y + kHalfSeparation);
 }
 
-// Black bookmark-ribbon overlay anchored to the top-right of the cover, with
-// a V-notch on the bottom edge and the percentage rendered in white. Matches
-// the Kindle progress badge affordance.
-static void drawProgressBadge(const GfxRenderer& renderer, int x, int y, int width, int /*height*/, int8_t percent) {
-  if (percent < 0) return;
-
-  char buf[8];
-  std::snprintf(buf, sizeof(buf), "%d%%", static_cast<int>(percent));
-
-  const int textW = renderer.getTextWidth(SMALL_FONT_ID, buf);
-  const int textH = renderer.getLineHeight(SMALL_FONT_ID);
-  constexpr int padX = 2;
-  constexpr int padY = 1;
-  constexpr int notchDepth = 3;
-  const int badgeW = textW + padX * 2;
-  const int badgeH = textH + padY * 2 + notchDepth;
-
-  // Anchor to the top-right corner of the cover.
-  const int bx = x + width - badgeW;
-  const int by = y;
-
-  // Polygon: top-left -> top-right -> bottom-right -> center notch -> bottom-left.
-  const int xPoints[5] = {bx, bx + badgeW, bx + badgeW, bx + badgeW / 2, bx};
-  const int yPoints[5] = {by, by, by + badgeH, by + badgeH - notchDepth, by + badgeH};
-
-  renderer.fillPolygon(xPoints, yPoints, 5, /*state=*/true);  // black ribbon
-
-  // White text centred in the rectangular portion above the notch.
-  const int textX = bx + (badgeW - textW) / 2;
-  const int textY = by + padY;
-  renderer.drawText(SMALL_FONT_ID, textX, textY, buf, /*black=*/false);
-}
-
 // Extracts the displayable label for a thumb tile. For a single-book tile we
 // show the book's title; for a series stack we show the series name, falling
 // back to the parent folder basename when the EPUB metadata didn't carry a
@@ -524,21 +508,18 @@ void drawThumbnailRow(GfxRenderer& renderer, const Rect& rect, const std::vector
     drawCover(renderer, thumbRect.x, thumbRect.y, thumbRect.width, coverH, *tile.book, kThumbnailCoverHeight);
 
     if (tile.stackSize > 1) {
-      // Series tile: replace the per-book progress ribbon with a round
-      // badge showing the total book count. Per-book progress for a stack
-      // is meaningless (which book are we measuring?), and the count is
-      // the more useful at-a-glance signal.
+      // Series stack: show the total book count. Per-book progress for a stack
+      // is meaningless (which book are we measuring?), and the count is the
+      // more useful at-a-glance signal.
       char countBuf[8];
       std::snprintf(countBuf, sizeof(countBuf), "%d", tile.stackSize);
       drawRoundCountBadge(renderer, thumbRect.x, thumbRect.y, thumbRect.width, countBuf);
     } else {
+      // Single book: completed check badge, in-progress bottom bar, or nothing
+      // for unread/unknown. The absence of any indicator is the "not started"
+      // signal.
       const int8_t percent = HomeProgressCache::getInstance().getProgress(tile.book->path);
-      // Skip the badge for unread books (0%) so the row doesn't get peppered
-      // with "0%" ribbons that carry no information; the absence of a badge
-      // is itself the "not started" signal.
-      if (percent > 0) {
-        drawProgressBadge(renderer, thumbRect.x, thumbRect.y, thumbRect.width, coverH, percent);
-      }
+      drawCoverProgressOverlay(renderer, thumbRect.x, thumbRect.y, thumbRect.width, coverH, percent);
     }
 
     // Title (or series name) below the cover. Single line, truncated with an
@@ -705,11 +686,13 @@ void drawSelectionBorder(GfxRenderer& renderer, const Rect& inner, bool rTL, boo
                            rBR, true);
 }
 
-void drawRoundedProgressBar(GfxRenderer& renderer, int x, int y, int width, int height, int8_t percent) {
+void drawRoundedProgressBar(const GfxRenderer& renderer, int x, int y, int width, int height, int8_t percent,
+                            int maxRadius) {
   if (width <= 0 || height <= 0) return;
   // Pill-ish look on a 8-10 px tall bar lands around r=2/3. Cap at half the
-  // smaller side so very short bars don't degenerate into a circle.
-  const int radius = std::min({3, width / 2, height / 2});
+  // smaller side so very short bars don't degenerate into a circle. Callers can
+  // pass a smaller maxRadius for squarer corners (e.g. the cover bar).
+  const int radius = std::min({maxRadius, width / 2, height / 2});
 
   renderer.drawRoundedRect(x, y, width, height, 1, radius, true);
 
@@ -733,6 +716,47 @@ void drawRoundedProgressBar(GfxRenderer& renderer, int x, int y, int width, int 
     renderer.fillRoundedRect(x + 1, y + 1, fillW, innerH, fillRadius,
                              /*roundTopLeft=*/true, /*roundTopRight=*/false,
                              /*roundBottomLeft=*/true, /*roundBottomRight=*/false, Color::Black);
+  }
+}
+
+void drawCompletedBadge(const GfxRenderer& renderer, int coverX, int coverY, int coverW) {
+  const int radius = 11;
+  const int cx = coverX + coverW - radius - 2;
+  const int cy = coverY + radius + 2;
+  fillDisc(renderer, cx, cy, radius, /*black=*/true);
+  drawCheckGlyph(renderer, cx, cy, radius);
+}
+
+void drawCoverProgressBar(const GfxRenderer& renderer, int coverX, int coverY, int coverW, int coverH, int8_t percent) {
+  // Thin pill floating inside the cover: inset on the left, right, and bottom so
+  // it reads as an overlay on the art rather than a footer welded to the edge.
+  constexpr int kBarH = 6;
+  constexpr int kMargin = 8;
+  constexpr int kHalo = 2;
+  constexpr int kBarRadius = 2;
+  const int barW = coverW - 2 * kMargin;
+  if (barW <= 0 || coverH <= kBarH + kMargin) return;
+  const int clamped = percent < 0 ? 0 : (percent > 100 ? 100 : static_cast<int>(percent));
+  const int barX = coverX + kMargin;
+  const int barY = coverY + coverH - kBarH - kMargin;
+
+  // White halo plate slightly larger than the bar so the black outline and fill
+  // are always ringed by white. That keeps the bar legible on BOTH light and
+  // dark covers: on a dark cover the black fill would otherwise bleed into the
+  // art and hide the fill level. drawRoundedProgressBar then draws the black
+  // outline + fill on top; the empty portion shows this white plate.
+  renderer.fillRoundedRect(barX - kHalo, barY - kHalo, barW + 2 * kHalo, kBarH + 2 * kHalo, kBarRadius + kHalo,
+                           Color::White);
+  drawRoundedProgressBar(renderer, barX, barY, barW, kBarH, static_cast<int8_t>(clamped), kBarRadius);
+}
+
+void drawCoverProgressOverlay(const GfxRenderer& renderer, int coverX, int coverY, int coverW, int coverH,
+                              int8_t percent) {
+  if (percent < 0) return;
+  if (percent >= kCompletedPercent) {
+    drawCompletedBadge(renderer, coverX, coverY, coverW);
+  } else if (percent > 0) {
+    drawCoverProgressBar(renderer, coverX, coverY, coverW, coverH, percent);
   }
 }
 
