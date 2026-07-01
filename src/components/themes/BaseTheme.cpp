@@ -211,7 +211,21 @@ void BaseTheme::drawButtonHintsGlyphs(GfxRenderer& renderer, ButtonHintGlyphSet 
       continue;
     }
     if (i == 1) {
-      drawSolidDisc(renderer, cx, glyphCy, kGlyphHalf);
+      if (variant == ButtonHintGlyphSet::FontDownload) {
+        // Down-arrow into a base line -- "download to device".
+        renderer.drawLine(cx, glyphCy - 5, cx, glyphCy + 1, 2, true);
+        const int headX[3] = {cx - 4, cx + 4, cx};
+        const int headY[3] = {glyphCy - 1, glyphCy - 1, glyphCy + 4};
+        renderer.fillPolygon(headX, headY, 3, true);
+        renderer.drawLine(cx - 5, glyphCy + 5, cx + 5, glyphCy + 5, 2, true);
+      } else if (variant == ButtonHintGlyphSet::FontDelete) {
+        // Trash can -- destructive delete, deliberately not a download glyph.
+        renderer.drawLine(cx - 5, glyphCy - 3, cx + 5, glyphCy - 3, 2, true);  // lid
+        renderer.fillRect(cx - 2, glyphCy - 5, 4, 2, true);                    // handle
+        renderer.drawRect(cx - 4, glyphCy - 2, 8, 9, true);                    // body
+      } else {
+        drawSolidDisc(renderer, cx, glyphCy, kGlyphHalf);
+      }
       continue;
     }
 

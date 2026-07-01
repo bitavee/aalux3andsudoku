@@ -125,6 +125,14 @@ class BaseTheme {
     // reading/finished toggle. Up/down are repurposed in StatsActivity so the
     // arrow glyphs would be misleading there.
     StatsActions,
+    // Font manager: back-arrow, a download glyph (down-arrow into a tray) in the
+    // confirm slot, then up/down list nav. Confirm downloads (or updates) the
+    // selected font family.
+    FontDownload,
+    // Font manager, installed row: back-arrow, a trash glyph in the confirm
+    // slot, then up/down. Confirm deletes -- a distinct glyph so a destructive
+    // action never reads as "download".
+    FontDelete,
   };
   virtual void drawButtonHintsGlyphs(GfxRenderer& renderer, ButtonHintGlyphSet variant = ButtonHintGlyphSet::Navigation,
                                      uint8_t slotMask = 0x0F) const;
