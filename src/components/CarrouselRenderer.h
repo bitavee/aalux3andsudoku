@@ -48,8 +48,6 @@ class CarrouselRenderer {
   };
 
   void freeTiles();
-  Rect cardsRect(const Rect& area) const;
-  bool cardsVisible(GfxRenderer& renderer, const Rect& area) const;
 
   void drawCoverInto(GfxRenderer& renderer, const Rect& dst, const RecentBook& book, int targetHeight);
   void drawSideTileCached(GfxRenderer& renderer, int slot, const Rect& bbox, const RecentBook& book, int hL, int hR,

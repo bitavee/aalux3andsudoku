@@ -24,11 +24,13 @@
 
 namespace {
 
-constexpr int kTopGap = 18;
+constexpr int kTopGap = 8;
 constexpr int kInfoGapTop = 6;
 constexpr int kInfoGapBottom = 10;
 constexpr int kCardsMinHeight = 88;
-constexpr int kCardsMaxHeight = 116;
+constexpr int kCardsMaxHeight = 200;
+constexpr int kBottomGap = 10;
+constexpr int kCoverWidthCapPct = 62;
 constexpr int kCardGap = 8;
 constexpr int kCardSidePadding = 14;
 constexpr int kCardCornerRadius = 6;
@@ -41,20 +43,66 @@ constexpr int kSideInnerPct = 90;
 constexpr int kSideOuterPct = 80;
 constexpr int kSideOverlapPct = 15;
 constexpr int kSideFarStepPct = 75;
-constexpr int kPortraitCoverCap = 340;
-constexpr int kLandscapeCoverCap = 300;
 constexpr int kMinCoverHeight = 60;
 
 int infoBandHeight(GfxRenderer& renderer) {
   return renderer.getLineHeight(UI_12_FONT_ID) + 2 + renderer.getLineHeight(UI_10_FONT_ID) + 4;
 }
 
-int cardsHeight(const Rect& area) { return std::clamp(area.height / 6, kCardsMinHeight, kCardsMaxHeight); }
-
 bool cardsShown(GfxRenderer& renderer, const Rect& area) {
   if (renderer.getScreenHeight() <= renderer.getScreenWidth()) return false;
   const int need = kTopGap + 200 + kInfoGapTop + infoBandHeight(renderer) + kInfoGapBottom + kCardsMinHeight;
   return area.height >= need;
+}
+
+struct CarrouselLayout {
+  Rect cover;
+  int infoTop;
+  Rect cards;
+  bool hasCards;
+};
+
+CarrouselLayout computeLayout(GfxRenderer& renderer, const Rect& area) {
+  const int pageWidth = renderer.getScreenWidth();
+  const int cx = pageWidth / 2;
+
+  [[maybe_unused]] int marginTop, marginBottom;
+  int marginRight, marginLeft;
+  renderer.getOrientedViewableTRBL(&marginTop, &marginRight, &marginBottom, &marginLeft);
+  const int viewLeft = marginLeft;
+  const int viewRight = pageWidth - marginRight;
+  const int halfRoom = std::min(cx - viewLeft, viewRight - cx);
+  const int farSafeWidth = halfRoom * 100 / 84;
+  const int widthCap = std::min(kCoverWidthCapPct * pageWidth / 100, farSafeWidth);
+
+  const int info = infoBandHeight(renderer);
+  const bool hasCards = cardsShown(renderer, area);
+  const int coverTop = area.y + kTopGap;
+  const int areaBottom = area.y + area.height;
+
+  int reserveBelow = kInfoGapTop + info + kBottomGap;
+  if (hasCards) reserveBelow += kInfoGapBottom + kCardsMinHeight;
+
+  int coverH = std::min(area.height - kTopGap - reserveBelow, widthCap * 3 / 2);
+  if (coverH < kMinCoverHeight) coverH = kMinCoverHeight;
+  int coverW = (coverH * 2) / 3;
+  if (coverW > widthCap) {
+    coverW = widthCap;
+    coverH = (coverW * 3) / 2;
+  }
+
+  CarrouselLayout layout;
+  layout.cover = Rect{cx - coverW / 2, coverTop, coverW, coverH};
+  layout.infoTop = coverTop + coverH + kInfoGapTop;
+  layout.hasCards = hasCards;
+  if (hasCards) {
+    const int cardsTop = layout.infoTop + info + kInfoGapBottom;
+    const int cardsH = std::clamp(areaBottom - kBottomGap - cardsTop, kCardsMinHeight, kCardsMaxHeight);
+    layout.cards = Rect{area.x, cardsTop, area.width, cardsH};
+  } else {
+    layout.cards = Rect{area.x, layout.infoTop + info, area.width, 0};
+  }
+  return layout;
 }
 
 const BookStatEntry* findStatsByPath(const std::string& bookPath) {
@@ -143,36 +191,8 @@ void CarrouselRenderer::freeTiles() {
   }
 }
 
-bool CarrouselRenderer::cardsVisible(GfxRenderer& renderer, const Rect& area) const {
-  return cardsShown(renderer, area);
-}
-
-Rect CarrouselRenderer::cardsRect(const Rect& area) const {
-  const int h = cardsHeight(area);
-  const int y = area.y + area.height - h;
-  return Rect{area.x, y, area.width, h};
-}
-
 Rect CarrouselRenderer::centerCoverRect(GfxRenderer& renderer, const Rect& area) {
-  const int pageWidth = renderer.getScreenWidth();
-  const bool portrait = renderer.getScreenHeight() > pageWidth;
-
-  const int cardsReserve = cardsShown(renderer, area) ? cardsHeight(area) : 0;
-  const int coverTop = area.y + kTopGap;
-  const int cardsTop = area.y + area.height - cardsReserve;
-
-  int maxCoverH = cardsTop - kInfoGapBottom - infoBandHeight(renderer) - kInfoGapTop - coverTop;
-  if (maxCoverH < kMinCoverHeight) maxCoverH = kMinCoverHeight;
-
-  int coverH = std::min(maxCoverH, portrait ? kPortraitCoverCap : kLandscapeCoverCap);
-  int coverW = (coverH * 2) / 3;
-  const int maxW = pageWidth / 2;
-  if (coverW > maxW) {
-    coverW = maxW;
-    coverH = (coverW * 3) / 2;
-  }
-  const int cx = pageWidth / 2;
-  return Rect{cx - coverW / 2, coverTop, coverW, coverH};
+  return computeLayout(renderer, area).cover;
 }
 
 void CarrouselRenderer::drawCoverInto(GfxRenderer& renderer, const Rect& dst, const RecentBook& book,
@@ -309,7 +329,8 @@ void CarrouselRenderer::drawFull(GfxRenderer& renderer, const Rect& area, const 
   int cur = centerIndex;
   if (cur < 0 || cur >= n) cur = 0;
 
-  const Rect center = centerCoverRect(renderer, area);
+  const CarrouselLayout layout = computeLayout(renderer, area);
+  const Rect& center = layout.cover;
   const int sideW = std::max(24, center.width * kSideWidthPctOfCenter / 100);
   const int innerH = center.height * kSideInnerPct / 100;
   const int outerH = center.height * kSideOuterPct / 100;
@@ -360,8 +381,8 @@ void CarrouselRenderer::drawFull(GfxRenderer& renderer, const Rect& area, const 
   const bool clockOk = stats::epochValid(static_cast<int64_t>(nowEpoch)) || global.lastSyncedDay != 0;
   drawBookInfo(renderer, area, centerBook, !clockOk);
 
-  if (cardsVisible(renderer, area)) {
-    drawStatCards(renderer, cardsRect(area));
+  if (layout.hasCards) {
+    drawStatCards(renderer, layout.cards);
   }
   (void)focused;
 }
@@ -413,7 +434,7 @@ void CarrouselRenderer::drawBookInfo(GfxRenderer& renderer, const Rect& area, co
         static_cast<uint64_t>(stat->totalReadingMs) * remainingPct / static_cast<uint32_t>(percent);
     char raw[32];
     formatTimeApprox(raw, sizeof(raw), remainingMs);
-    std::snprintf(leftBuf, sizeof(leftBuf), "~%s %s", raw, tr(STR_HERO_EST_LEFT));
+    std::snprintf(leftBuf, sizeof(leftBuf), "%s: ~%s", tr(STR_HERO_EST_LEFT), raw);
     haveLeft = true;
   }
 
@@ -484,15 +505,33 @@ void CarrouselRenderer::drawStatCards(GfxRenderer& renderer, const Rect& rect) {
     const CatSprite& sprite = *kPetVisuals[stage].sprite;
     std::snprintf(buf, sizeof(buf), "%s %s %u", I18N.get(kPetVisuals[stage].nameKey), tr(STR_STATS_PET_LEVEL),
                   static_cast<unsigned>(stats::petLevelForXp(global.petXp)));
-    const std::string lbl = renderer.truncatedText(UI_10_FONT_ID, buf, cardW - 6);
-    const int lw = renderer.getTextWidth(UI_10_FONT_ID, lbl.c_str());
-    const int labelY = y + cardH - lh10 - 4;
-    const int availH = (labelY - 2) - (y + kCardInnerPad);
+    const int smallLh = renderer.getLineHeight(SMALL_FONT_ID);
+    constexpr int kXpBarH = 5;
+    constexpr int kXpBarPad = 8;
+    const int barY = y + cardH - kCardInnerPad - kXpBarH;
+    const int labelY = barY - 3 - smallLh;
+    const std::string lbl = renderer.truncatedText(SMALL_FONT_ID, buf, cardW - 6);
+    const int lw = renderer.getTextWidth(SMALL_FONT_ID, lbl.c_str());
+    const int spriteTop = y + kCardInnerPad;
+    const int availH = (labelY - 2) - spriteTop;
     int box = std::min(cardW - 2 * kCardInnerPad, availH);
     if (box < 8) box = 8;
     const int boxX = cx + (cardW - box) / 2;
-    const int boxY = y + kCardInnerPad + (availH - box) / 2;
+    const int boxY = spriteTop + (availH - box) / 2;
     drawPetSpriteScaled(renderer, sprite, boxX, boxY, box);
-    renderer.drawText(UI_10_FONT_ID, cx + (cardW - lw) / 2, labelY, lbl.c_str(), true);
+    renderer.drawText(SMALL_FONT_ID, cx + (cardW - lw) / 2, labelY, lbl.c_str(), true);
+
+    const uint16_t floorXp = stats::petXpFloorForStage(stage);
+    const uint16_t nextXp = stats::petXpNextForStage(stage);
+    int fillPct = 100;
+    if (nextXp > floorXp) {
+      const uint32_t into = static_cast<uint32_t>(global.petXp - floorXp) * 100u;
+      fillPct = static_cast<int>(std::min<uint32_t>(100u, into / static_cast<uint32_t>(nextXp - floorXp)));
+    }
+    const int barX = cx + kXpBarPad;
+    const int barW = cardW - 2 * kXpBarPad;
+    renderer.drawRoundedRect(barX, barY, barW, kXpBarH, 1, kXpBarH / 2, true);
+    const int fillW = barW * fillPct / 100;
+    if (fillW > 0) renderer.fillRect(barX, barY, fillW, kXpBarH, true);
   }
 }

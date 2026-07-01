@@ -764,8 +764,9 @@ Rect HomeActivity::menuRect() const {
 }
 
 Rect HomeActivity::carrouselAreaRect() const {
+  constexpr int kCarrouselHeaderBand = 34;
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const int top = metrics.topPadding + metrics.headerHeight;
+  const int top = metrics.topPadding + kCarrouselHeaderBand;
   const Rect menu = menuRect();
   return Rect{0, top, renderer.getScreenWidth(), menu.y - top};
 }
