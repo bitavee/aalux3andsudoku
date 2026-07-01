@@ -286,22 +286,17 @@ void StatsActivity::confirmRemoveFocusedBook() {
 }
 
 int StatsActivity::calendarMinMonthOffset() const {
+  // Furthest back the calendar can page. Deliberately independent of reading
+  // history so the user can browse months with no data (they render as an empty
+  // grid). Gated on the same "today" renderCalendar derives -- valid live clock,
+  // else the persisted lastSyncedDay -- so paging works whenever a grid is
+  // actually shown, including when the RTC-less clock isn't currently synced.
+  // Only "never synced" (today == 0, the "sync time" prompt) has nothing to page.
+  constexpr int kMonthsBack = 24;
   const auto& global = StatsManager.getGlobal();
   const time_t nowEpoch = time(nullptr);
-  if (!stats::epochValid(static_cast<int64_t>(nowEpoch))) return 0;
-  const uint16_t today =
-      stats::dayNumber(static_cast<int64_t>(nowEpoch), stats::utcOffsetSeconds(SETTINGS.clockUtcOffsetQ));
-  if (today == 0) return 0;
-
-  int earliest = global.firstEverDay;
-  const int ringFloor = static_cast<int>(today) - (STATS_DAY_RING_SIZE - 1);
-  if (earliest <= 0 || earliest < ringFloor) earliest = ringFloor;
-  if (earliest < 0) earliest = 0;
-  if (earliest > static_cast<int>(today)) earliest = static_cast<int>(today);
-
-  const stats::CivilDate tc = stats::civilFromDays(static_cast<int>(today));
-  const stats::CivilDate ec = stats::civilFromDays(earliest);
-  return -((tc.year - ec.year) * 12 + (tc.month - ec.month));
+  const bool haveToday = stats::epochValid(static_cast<int64_t>(nowEpoch)) || global.lastSyncedDay != 0;
+  return haveToday ? -kMonthsBack : 0;
 }
 
 // -----------------------------------------------------------------------
