@@ -1,9 +1,11 @@
 #pragma once
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "../Activity.h"
 #include "RecentBooksStore.h"
+#include "components/CarrouselRenderer.h"
 #include "components/themes/BaseTheme.h"  // for Rect
 
 // Tile in the recents area. A tile is either a single book or a "series
@@ -48,6 +50,10 @@ class HomeActivity final : public Activity {
   FocusRow focusRow = FOCUS_HERO;
   int focusIndex = 0;  // column within the focused row
 
+  bool carrouselStyle = false;
+  int carrouselCenter = 0;
+  std::unique_ptr<CarrouselRenderer> carrousel;
+
   // --- Lifecycle helpers ---
   void loadRecentBooks(int max);
   void loadRecentCovers();
@@ -82,7 +88,9 @@ class HomeActivity final : public Activity {
   Rect thumbsRow1Rect() const;
   Rect menuRect() const;
   Rect focusedItemRect() const;
+  Rect carrouselAreaRect() const;
   void renderFull();
+  void renderFullCarrousel();
 
  public:
   explicit HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

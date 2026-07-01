@@ -20,6 +20,7 @@
 #include "activities/reader/ReaderUtils.h"  // GO_HOME_MS — shared long-press threshold across the UI
 #include "activities/stats/StatsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
+#include "components/CarrouselRenderer.h"
 #include "components/HomeProgressCache.h"
 #include "components/HomeRenderer.h"
 #include "components/UITheme.h"
@@ -62,6 +63,15 @@ void HomeActivity::onEnter() {
   progressLoaded = false;
   freeCoverBuffer();
 
+  carrouselStyle = SETTINGS.homeStyle == CrossPointSettings::HOME_CARROUSEL;
+  carrouselCenter = 0;
+  if (carrouselStyle) {
+    if (!carrousel) carrousel = std::make_unique<CarrouselRenderer>();
+    carrousel->reset();
+  } else {
+    carrousel.reset();
+  }
+
   loadRecentBooks(kMaxHomeRecents);
 
   if (recentBooks.empty()) {
@@ -93,10 +103,66 @@ void HomeActivity::onEnter() {
 void HomeActivity::onExit() {
   Activity::onExit();
   freeCoverBuffer();
+  carrousel.reset();
   HomeProgressCache::getInstance().clear();
 }
 
 void HomeActivity::loop() {
+  if (carrouselStyle) {
+    const int count = static_cast<int>(recentBooks.size());
+    const int cycle = std::min(CarrouselRenderer::kVisibleCovers, count);
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      if (focusRow == FOCUS_MENU) {
+        openFocused();
+      } else if (count > 0) {
+        freeCoverBuffer();
+        activityManager.goToReader(recentBooks[carrouselCenter].path);
+      }
+      return;
+    }
+    if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+      if (focusRow == FOCUS_MENU && count > 0) {
+        focusRow = FOCUS_HERO;
+      } else {
+        focusRow = FOCUS_MENU;
+        focusIndex = 0;
+      }
+      requestUpdate();
+      return;
+    }
+    if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+      if (focusRow == FOCUS_HERO) {
+        focusRow = FOCUS_MENU;
+        focusIndex = 0;
+      } else {
+        focusRow = count > 0 ? FOCUS_HERO : FOCUS_MENU;
+      }
+      requestUpdate();
+      return;
+    }
+    if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+      if (focusRow == FOCUS_MENU) {
+        moveFocus(0, -1);
+      } else if (cycle > 1) {
+        carrouselCenter = (carrouselCenter + cycle - 1) % cycle;
+        coverBufferStored = false;
+        requestUpdate();
+      }
+      return;
+    }
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+      if (focusRow == FOCUS_MENU) {
+        moveFocus(0, +1);
+      } else if (cycle > 1) {
+        carrouselCenter = (carrouselCenter + 1) % cycle;
+        coverBufferStored = false;
+        requestUpdate();
+      }
+      return;
+    }
+    return;
+  }
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     // Long-press Confirm on a single-book tile = "Remove from recents".
     // Series stacks and menu rows fall through to short-press (open),
@@ -697,6 +763,13 @@ Rect HomeActivity::menuRect() const {
   return Rect{0, menuY, pageWidth, HomeRenderer::kBottomMenuHeight};
 }
 
+Rect HomeActivity::carrouselAreaRect() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int top = metrics.topPadding + metrics.headerHeight;
+  const Rect menu = menuRect();
+  return Rect{0, top, renderer.getScreenWidth(), menu.y - top};
+}
+
 Rect HomeActivity::focusedItemRect() const {
   switch (focusRow) {
     case FOCUS_HERO:
@@ -764,6 +837,25 @@ void HomeActivity::renderFull() {
   HomeRenderer::drawBottomButtonHints(renderer, buttonHintsRect);
 }
 
+void HomeActivity::renderFullCarrousel() {
+  renderer.clearScreen();
+
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const Rect headerRect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight};
+  GUI.drawHeader(renderer, headerRect, nullptr);
+  renderer.drawCenteredText(SMALL_FONT_ID, headerRect.y + 5, tr(STR_AALU), /*black=*/true, EpdFontFamily::BOLD);
+  HomeRenderer::drawHeaderClock(renderer, headerRect);
+
+  const int cycle = std::min(CarrouselRenderer::kVisibleCovers, static_cast<int>(recentBooks.size()));
+  if (cycle > 0 && carrouselCenter >= cycle) carrouselCenter = 0;
+  carrousel->drawFull(renderer, carrouselAreaRect(), recentBooks, carrouselCenter, focusRow == FOCUS_HERO);
+
+  HomeRenderer::drawBottomMenu(renderer, menuRect());
+  const Rect menu = menuRect();
+  const Rect buttonHintsRect{0, menu.y + menu.height, renderer.getScreenWidth(), HomeRenderer::kButtonHintsHeight};
+  HomeRenderer::drawBottomButtonHints(renderer, buttonHintsRect);
+}
+
 void HomeActivity::render(RenderLock&&) {
   // Selection overlays: menu rows fill the focused tile with a solid black
   // pill (label rendered in white, no icon) so it matches the crosspet look.
@@ -772,10 +864,26 @@ void HomeActivity::render(RenderLock&&) {
   auto drawFocus = [&]() {
     if (focusRow == FOCUS_MENU) {
       HomeRenderer::drawMenuSelection(renderer, menuRect(), focusIndex);
+    } else if (carrouselStyle) {
+      carrousel->drawSelectionOnly(renderer, carrouselAreaRect(), recentBooks, carrouselCenter, true);
     } else {
       HomeRenderer::drawSelectionBorder(renderer, focusedItemRect());
     }
   };
+
+  if (carrouselStyle) {
+    if (coverBufferStored && restoreCoverBuffer()) {
+      drawFocus();
+      renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+      return;
+    }
+    renderFullCarrousel();
+    firstRenderDone = true;
+    coverBufferStored = storeCoverBuffer();
+    drawFocus();
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    return;
+  }
 
   if (coverBufferStored && restoreCoverBuffer()) {
     drawFocus();

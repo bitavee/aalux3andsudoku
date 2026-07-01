@@ -204,6 +204,7 @@ class GfxRenderer {
   /// thumbnails where preserving aspect ratio would leave white margins on
   /// one axis when the BMP's aspect doesn't match the cover slot.
   void drawBitmapStretched1Bit(const Bitmap& bitmap, int x, int y, int width, int height) const;
+  void drawPerspectiveBitmap(const Bitmap& bitmap, int x, int y, int w, int hL, int hR) const;
   void fillPolygon(const int* xPoints, const int* yPoints, int numPoints, bool state = true) const;
 
   // Text

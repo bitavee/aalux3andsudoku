@@ -143,6 +143,8 @@ class CrossPointSettings {
   // Image rendering in EPUB reader
   enum IMAGE_RENDERING { IMAGES_DISPLAY = 0, IMAGES_PLACEHOLDER = 1, IMAGES_SUPPRESS = 2, IMAGE_RENDERING_COUNT };
 
+  enum HOME_STYLE { HOME_FLAT = 0, HOME_CARROUSEL = 1, HOME_STYLE_COUNT };
+
   // Sleep screen settings
   uint8_t sleepScreen = DARK;
   // Sleep screen cover mode settings
@@ -212,6 +214,7 @@ class CrossPointSettings {
   uint8_t showHiddenFiles = 0;
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
+  uint8_t homeStyle = HOME_FLAT;
   // Bookshelf first-time tooltip: set to 1 after the user dismisses the
   // one-time "Hold Back to refresh" hint. Persists across cache wipes — once
   // the user has learned the gesture, the hint never re-appears.

@@ -68,6 +68,7 @@ Everything below is on top of what Seek Reader / CrossPoint already do.
 - **KOReader sync** — heuristic paragraph-level synchronization that fixes chapter drift and avoids crashing remote-device XML parsers.
 
 ### UI
+- **Carrousel home style** — a cover-flow home screen (Settings → Display → Home style → Carrousel): five covers with your last-read book centered, progress painted on the cover, title + time-left below, and a Streak / Today's goal / Pet stats strip. Clock-less devices fall back to lifetime hours + books finished. Landscape shows the covers only. Flat (today's hero + thumbnails) stays the default.
 - **Multiple home themes** — Classic, Lyra, Recent6 Grid (3×2, memory-safe).
 - **Custom boot/sleep screens** — including a cat boot logo because why not.
 - **Configurable button layout** — front button mapping plus page-nav swap.
@@ -148,6 +149,7 @@ See [USER_GUIDE.md](./USER_GUIDE.md) for the day-to-day operation reference. The
 - **Back** to go up a level; **long-press Back** in the reader to jump home, or on the Bookshelf to rescan the card.
 - **Right** in Stats cycles the six views (Reading, Finished, Badges, Pet, Calendar, Wrapped); **Up/Down** page months in the Calendar.
 - **Aa** while reading to open the Quick Settings overlay.
+- **Home style** (Settings → Display) switches between **Flat** (hero + thumbnails) and **Carrousel** (cover-flow). In Carrousel, **Left/Right** rotate the covers, **Confirm** opens the centered book, and **Up/Down** move focus to the bottom menu.
 
 ---
 
@@ -190,6 +192,7 @@ For the gory format details, see [`docs/file-formats.md`](./docs/file-formats.md
 
 AALU is **actively developed** — I'm using it as my daily reader and shaping it as I go. Recent work has landed:
 
+- ✅ Carrousel home style — a cover-flow home with progress-on-cover and a Streak / Goal / Pet stats strip
 - ✅ Reading companion (pet) that evolves cat → tiger → dragon as you read
 - ✅ Stats calendar heatmap, achievement badges, and a "Wrapped" year-in-review
 - ✅ Cover progress bars + completed badges on Recents, Bookshelf, and the series viewer
