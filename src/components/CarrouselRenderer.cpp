@@ -352,19 +352,19 @@ void CarrouselRenderer::drawFull(GfxRenderer& renderer, const Rect& area, const 
 
   if (n >= 5) {
     drawSideTileCached(renderer, 0, Rect{leftFarX, drawY, sideW, sideBoxH}, recents[idxLeftFar], innerH, outerH,
-                       HomeRenderer::kThumbnailCoverHeight);
+                       HomeRenderer::kHeroCoverHeight);
   }
   if (n >= 4) {
     drawSideTileCached(renderer, 1, Rect{rightFarX, drawY, sideW, sideBoxH}, recents[idxRightFar], outerH, innerH,
-                       HomeRenderer::kThumbnailCoverHeight);
+                       HomeRenderer::kHeroCoverHeight);
   }
   if (n >= 2) {
     drawSideTileCached(renderer, 2, Rect{leftNearX, drawY, sideW, sideBoxH}, recents[idxLeftNear], innerH, outerH,
-                       HomeRenderer::kThumbnailCoverHeight);
+                       HomeRenderer::kHeroCoverHeight);
   }
   if (n >= 3) {
     drawSideTileCached(renderer, 3, Rect{rightNearX, drawY, sideW, sideBoxH}, recents[idxRightNear], outerH, innerH,
-                       HomeRenderer::kThumbnailCoverHeight);
+                       HomeRenderer::kHeroCoverHeight);
   }
 
   constexpr int kCenterFrame = 5;

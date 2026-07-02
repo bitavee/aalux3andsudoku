@@ -688,7 +688,7 @@ bool Epub::generateCoverBmp(bool cropped) const {
 std::string Epub::getThumbBmpPath() const { return cachePath + "/thumb_[HEIGHT].bmp"; }
 std::string Epub::getThumbBmpPath(int height) const { return cachePath + "/thumb_" + std::to_string(height) + ".bmp"; }
 
-static bool thumbMatchesTargetWidth(const std::string& thumbPath, int targetWidth) {
+static bool thumbIsFresh(const std::string& thumbPath, int targetWidth) {
   HalFile f;
   if (!Storage.openFileForRead("EBP", thumbPath, f)) {
     return false;
@@ -698,7 +698,7 @@ static bool thumbMatchesTargetWidth(const std::string& thumbPath, int targetWidt
     f.close();
     return true;
   }
-  uint8_t header[26];
+  uint8_t header[30];
   const bool ok = sz >= sizeof(header) && f.read(header, sizeof(header)) == static_cast<int>(sizeof(header));
   f.close();
   if (!ok) {
@@ -706,13 +706,14 @@ static bool thumbMatchesTargetWidth(const std::string& thumbPath, int targetWidt
   }
   const int storedWidth = static_cast<int>(header[18]) | (static_cast<int>(header[19]) << 8) |
                           (static_cast<int>(header[20]) << 16) | (static_cast<int>(header[21]) << 24);
-  return storedWidth == targetWidth;
+  const int bitCount = static_cast<int>(header[28]) | (static_cast<int>(header[29]) << 8);
+  return storedWidth == targetWidth && bitCount == 1;
 }
 
 bool Epub::generateThumbBmp(int height) const {
   const int targetWidth = height * 2 / 3;
   const std::string thumbPath = getThumbBmpPath(height);
-  if (Storage.exists(thumbPath.c_str()) && thumbMatchesTargetWidth(thumbPath, targetWidth)) {
+  if (Storage.exists(thumbPath.c_str()) && thumbIsFresh(thumbPath, targetWidth)) {
     return true;
   }
   Storage.remove(thumbPath.c_str());

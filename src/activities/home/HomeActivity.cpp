@@ -429,7 +429,8 @@ void HomeActivity::loadRecentCovers() {
       continue;
     }
 
-    const int targetHeight = (i == 0) ? HomeRenderer::kHeroCoverHeight : HomeRenderer::kThumbnailCoverHeight;
+    const int targetHeight =
+        (carrouselStyle || i == 0) ? HomeRenderer::kHeroCoverHeight : HomeRenderer::kThumbnailCoverHeight;
     const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, targetHeight);
     if (Storage.exists(thumbPath.c_str())) {
       ++progress;
