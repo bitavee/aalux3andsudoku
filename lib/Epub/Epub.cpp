@@ -688,11 +688,34 @@ bool Epub::generateCoverBmp(bool cropped) const {
 std::string Epub::getThumbBmpPath() const { return cachePath + "/thumb_[HEIGHT].bmp"; }
 std::string Epub::getThumbBmpPath(int height) const { return cachePath + "/thumb_" + std::to_string(height) + ".bmp"; }
 
-bool Epub::generateThumbBmp(int height) const {
-  // Already generated, return true
-  if (Storage.exists(getThumbBmpPath(height).c_str())) {
+static bool thumbMatchesTargetWidth(const std::string& thumbPath, int targetWidth) {
+  HalFile f;
+  if (!Storage.openFileForRead("EBP", thumbPath, f)) {
+    return false;
+  }
+  const size_t sz = f.size();
+  if (sz == 0) {
+    f.close();
     return true;
   }
+  uint8_t header[26];
+  const bool ok = sz >= sizeof(header) && f.read(header, sizeof(header)) == static_cast<int>(sizeof(header));
+  f.close();
+  if (!ok) {
+    return false;
+  }
+  const int storedWidth = static_cast<int>(header[18]) | (static_cast<int>(header[19]) << 8) |
+                          (static_cast<int>(header[20]) << 16) | (static_cast<int>(header[21]) << 24);
+  return storedWidth == targetWidth;
+}
+
+bool Epub::generateThumbBmp(int height) const {
+  const int targetWidth = height * 2 / 3;
+  const std::string thumbPath = getThumbBmpPath(height);
+  if (Storage.exists(thumbPath.c_str()) && thumbMatchesTargetWidth(thumbPath, targetWidth)) {
+    return true;
+  }
+  Storage.remove(thumbPath.c_str());
 
   if (!bookMetadataCache || !bookMetadataCache->isLoaded()) {
     LOG_ERR("EBP", "Cannot generate thumb BMP, cache not loaded");
@@ -724,7 +747,7 @@ bool Epub::generateThumbBmp(int height) const {
     }
     // Use smaller target size for Continue Reading card (half of screen: 240x400)
     // Generate 1-bit BMP for fast home screen rendering (no gray passes needed)
-    int THUMB_TARGET_WIDTH = height * 0.6;
+    int THUMB_TARGET_WIDTH = targetWidth;
     int THUMB_TARGET_HEIGHT = height;
     const bool success = JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(coverJpg, thumbBmp, THUMB_TARGET_WIDTH,
                                                                              THUMB_TARGET_HEIGHT);
@@ -759,7 +782,7 @@ bool Epub::generateThumbBmp(int height) const {
     if (!Storage.openFileForWrite("EBP", getThumbBmpPath(height), thumbBmp)) {
       return false;
     }
-    int THUMB_TARGET_WIDTH = height * 0.6;
+    int THUMB_TARGET_WIDTH = targetWidth;
     int THUMB_TARGET_HEIGHT = height;
     const bool success =
         PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(coverPng, thumbBmp, THUMB_TARGET_WIDTH, THUMB_TARGET_HEIGHT);

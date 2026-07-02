@@ -293,7 +293,7 @@ bool Xtc::generateThumbBmp(int height) const {
   const uint8_t bitDepth = parser->getBitDepth();
 
   // Calculate target dimensions for thumbnail (fit within 240x400 Continue Reading card)
-  int THUMB_TARGET_WIDTH = height * 0.6;
+  int THUMB_TARGET_WIDTH = height * 2 / 3;
   int THUMB_TARGET_HEIGHT = height;
 
   // Calculate scale factor

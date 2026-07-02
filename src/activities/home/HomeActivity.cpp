@@ -208,6 +208,10 @@ void HomeActivity::loadRecentBooks(int max) {
   std::vector<int> persistIndices;
   for (const RecentBook& book : books) {
     if (static_cast<int>(recentBooks.size()) >= max) break;
+    HomeProgressCache::getInstance().loadProgressFor(book.path);
+    if (HomeProgressCache::getInstance().getProgress(book.path) >= HomeRenderer::kCompletedPercent) {
+      continue;
+    }
     // Per-book Storage.exists() check removed in 1.2.0 — it cost ~5-10ms per book (~50-90ms
     // total on a 9-book recents list) on every home entry just to filter out books the user
     // deleted from the SD card while not on home. The RecentBooks store is authoritative; if

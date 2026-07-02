@@ -46,6 +46,8 @@ Everything below is on top of what Seek Reader / CrossPoint already do.
 - **Series viewer.** Open a stack tile to see every member of the series in reading order, with the most-recently-read book pre-focused for "continue reading" in one tap.
 - **Bookshelf.** A full-library grid of every book on the card — not just recents — with series stacks collapsed behind a count badge. Long-press Confirm to delete a book, long-press Back to rescan the SD card.
 - **Cover progress at a glance.** Individual covers carry a thin progress bar while you're mid-book and a check badge once finished — on Recents, Bookshelf, and the series viewer. Series stacks show their book-count badge instead.
+- **Sharper covers.** Thumbnails are generated at their exact 2:3 on-screen size and Atkinson-dithered, so covers render crisp 1:1 instead of upscaled and smeared. Existing covers auto-upgrade to the sharper version as you browse — or all at once via long-press Back on the Bookshelf — with no cache wipe.
+- **Recents shows only unfinished books.** Once a book is finished it drops off the home recents and the Carrousel automatically, so "continue reading" always lands on something you haven't finished yet.
 - **Remove from recents.** Long-press Confirm (≥1 second) on a recents tile to clear it from home without deleting the file or losing your progress cache.
 
 ### Reading statistics, redone
