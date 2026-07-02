@@ -15,6 +15,8 @@
 #include "util/UrlUtils.h"
 
 namespace {
+constexpr uint16_t HTTP_TIMEOUT_MS = 15000;
+
 class FileWriteStream final : public Stream {
  public:
   FileWriteStream(FsFile& file, size_t total, HttpDownloader::ProgressCallback progress)
@@ -67,6 +69,8 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent) {
   LOG_DBG("HTTP", "Fetching: %s", url.c_str());
 
   http.begin(*client, url.c_str());
+  http.setConnectTimeout(HTTP_TIMEOUT_MS);
+  http.setTimeout(HTTP_TIMEOUT_MS);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.addHeader("User-Agent", "CrossPoint-ESP32-" AALU_VERSION);
 
@@ -118,6 +122,8 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
   LOG_DBG("HTTP", "Destination: %s", destPath.c_str());
 
   http.begin(*client, url.c_str());
+  http.setConnectTimeout(HTTP_TIMEOUT_MS);
+  http.setTimeout(HTTP_TIMEOUT_MS);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.addHeader("User-Agent", "CrossPoint-ESP32-" AALU_VERSION);
 
