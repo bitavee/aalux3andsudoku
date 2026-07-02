@@ -134,28 +134,31 @@ void drawRoundCountBadge(const GfxRenderer& renderer, int coverX, int coverY, in
 // cover never leaves a white margin on the right when its source aspect
 // ratio doesn't match the home layout's 2:3 thumbnail boxes.
 bool drawCover(GfxRenderer& renderer, int x, int y, int width, int height, const RecentBook& book, int targetHeight) {
-  const bool bwPass = renderer.getRenderMode() == GfxRenderer::BW;
   if (book.coverBmpPath.empty()) {
-    if (bwPass) renderer.roundCoverCorners(x, y, width, height, HomeRenderer::kCoverCornerRadius);
+    renderer.roundCoverCorners(x, y, width, height, HomeRenderer::kCoverCornerRadius);
     return false;
   }
 
   const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, targetHeight);
   FsFile file;
   if (!Storage.openFileForRead("HOME", thumbPath, file)) {
-    if (bwPass) renderer.roundCoverCorners(x, y, width, height, HomeRenderer::kCoverCornerRadius);
+    renderer.roundCoverCorners(x, y, width, height, HomeRenderer::kCoverCornerRadius);
     return false;
   }
 
   Bitmap bitmap(file);
   if (bitmap.parseHeaders() != BmpReaderError::Ok) {
     file.close();
-    if (bwPass) renderer.roundCoverCorners(x, y, width, height, HomeRenderer::kCoverCornerRadius);
+    renderer.roundCoverCorners(x, y, width, height, HomeRenderer::kCoverCornerRadius);
     return false;
   }
 
-  renderer.drawPerspectiveBitmap(bitmap, x, y, width, height, height);
-  if (bwPass) renderer.roundCoverCorners(x, y, width, height, HomeRenderer::kCoverCornerRadius);
+  if (bitmap.is1Bit()) {
+    renderer.drawBitmapStretched1Bit(bitmap, x, y, width, height);
+  } else {
+    renderer.drawBitmap(bitmap, x, y, width, height);
+  }
+  renderer.roundCoverCorners(x, y, width, height, HomeRenderer::kCoverCornerRadius);
   file.close();
   return true;
 }
@@ -263,7 +266,6 @@ namespace HomeRenderer {
 void drawHero(GfxRenderer& renderer, const Rect& rect, const RecentBook& book, int8_t progressPercent) {
   const Rect coverRect = getHeroCoverRect(rect);
   drawCover(renderer, coverRect.x, coverRect.y, coverRect.width, coverRect.height, book, kHeroCoverHeight);
-  if (renderer.getRenderMode() != GfxRenderer::BW) return;
 
   const int metaX = coverRect.x + coverRect.width + kHeroMetaGap;
   const int metaWidth = rect.x + rect.width - kHeroPadding - metaX;
@@ -498,10 +500,8 @@ void drawThumbnailRow(GfxRenderer& renderer, const Rect& rect, const std::vector
     const Rect thumbRect = getThumbnailRect(rect, i, count);
     const int coverH = kThumbnailCoverHeight;
     const int ghostDepth = std::min(2, tile.stackSize - 1);
-    const bool bwPass = renderer.getRenderMode() == GfxRenderer::BW;
-    if (bwPass) drawBackStack(renderer, thumbRect.x, thumbRect.y, thumbRect.width, coverH, ghostDepth);
+    drawBackStack(renderer, thumbRect.x, thumbRect.y, thumbRect.width, coverH, ghostDepth);
     drawCover(renderer, thumbRect.x, thumbRect.y, thumbRect.width, coverH, *tile.book, kThumbnailCoverHeight);
-    if (!bwPass) continue;
 
     if (tile.stackSize > 1) {
       // Series stack: show the total book count. Per-book progress for a stack
@@ -587,9 +587,8 @@ void drawMenuSelection(GfxRenderer& renderer, const Rect& menuRect, int selected
 
 void drawStackedCover(GfxRenderer& renderer, int x, int y, int width, int height, const std::string& thumbPath,
                       int stackSize) {
-  const bool bwPass = renderer.getRenderMode() == GfxRenderer::BW;
   const int ghostDepth = stackSize > 1 ? std::min(2, stackSize - 1) : 0;
-  if (bwPass && ghostDepth > 0) {
+  if (ghostDepth > 0) {
     drawBackStack(renderer, x, y, width, height, ghostDepth);
   }
 
@@ -603,14 +602,16 @@ void drawStackedCover(GfxRenderer& renderer, int x, int y, int width, int height
     if (Storage.openFileForRead("BSH", thumbPath, file)) {
       Bitmap bitmap(file);
       if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-        renderer.drawPerspectiveBitmap(bitmap, x, y, width, height, height);
+        if (bitmap.is1Bit()) {
+          renderer.drawBitmapStretched1Bit(bitmap, x, y, width, height);
+        } else {
+          renderer.drawBitmap(bitmap, x, y, width, height);
+        }
       }
       file.close();
     }
   }
-  if (bwPass) {
-    renderer.roundCoverCorners(x, y, width, height, kCoverCornerRadius);
-  }
+  renderer.roundCoverCorners(x, y, width, height, kCoverCornerRadius);
 
   if (stackSize > 1) {
     char countBuf[8];

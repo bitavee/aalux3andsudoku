@@ -144,19 +144,19 @@ class AtkinsonDitherer {
         quantized = 3;
         quantizedValue = 255;
       }
-    } else {  // balanced quartiles -- keeps deep blacks instead of washing mid-darks to light gray
-      if (adjusted < 64) {
+    } else {  // fine-tuned to X4 eink display
+      if (adjusted < 30) {
         quantized = 0;
-        quantizedValue = 0;
-      } else if (adjusted < 128) {
+        quantizedValue = 15;
+      } else if (adjusted < 50) {
         quantized = 1;
-        quantizedValue = 85;
-      } else if (adjusted < 192) {
+        quantizedValue = 30;
+      } else if (adjusted < 140) {
         quantized = 2;
-        quantizedValue = 170;
+        quantizedValue = 80;
       } else {
         quantized = 3;
-        quantizedValue = 255;
+        quantizedValue = 210;
       }
     }
 

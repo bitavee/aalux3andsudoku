@@ -698,7 +698,7 @@ static bool thumbMatchesTargetWidth(const std::string& thumbPath, int targetWidt
     f.close();
     return true;
   }
-  uint8_t header[30];
+  uint8_t header[26];
   const bool ok = sz >= sizeof(header) && f.read(header, sizeof(header)) == static_cast<int>(sizeof(header));
   f.close();
   if (!ok) {
@@ -706,8 +706,7 @@ static bool thumbMatchesTargetWidth(const std::string& thumbPath, int targetWidt
   }
   const int storedWidth = static_cast<int>(header[18]) | (static_cast<int>(header[19]) << 8) |
                           (static_cast<int>(header[20]) << 16) | (static_cast<int>(header[21]) << 24);
-  const int bitCount = static_cast<int>(header[28]) | (static_cast<int>(header[29]) << 8);
-  return storedWidth == targetWidth && bitCount > 1;
+  return storedWidth == targetWidth;
 }
 
 bool Epub::generateThumbBmp(int height) const {
@@ -746,12 +745,12 @@ bool Epub::generateThumbBmp(int height) const {
     if (!Storage.openFileForWrite("EBP", getThumbBmpPath(height), thumbBmp)) {
       return false;
     }
-    // 4-level grayscale thumbnail at the exact 2:3 slot size; composited via the
-    // LSB/MSB plane passes at draw time.
+    // Use smaller target size for Continue Reading card (half of screen: 240x400)
+    // Generate 1-bit BMP for fast home screen rendering (no gray passes needed)
     int THUMB_TARGET_WIDTH = targetWidth;
     int THUMB_TARGET_HEIGHT = height;
-    const bool success =
-        JpegToBmpConverter::jpegFileToBmpStreamWithSize(coverJpg, thumbBmp, THUMB_TARGET_WIDTH, THUMB_TARGET_HEIGHT);
+    const bool success = JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(coverJpg, thumbBmp, THUMB_TARGET_WIDTH,
+                                                                             THUMB_TARGET_HEIGHT);
     // Explicitly close() files before calling Storage.remove()
     coverJpg.close();
     thumbBmp.close();
@@ -786,7 +785,7 @@ bool Epub::generateThumbBmp(int height) const {
     int THUMB_TARGET_WIDTH = targetWidth;
     int THUMB_TARGET_HEIGHT = height;
     const bool success =
-        PngToBmpConverter::pngFileToBmpStreamWithSize(coverPng, thumbBmp, THUMB_TARGET_WIDTH, THUMB_TARGET_HEIGHT);
+        PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(coverPng, thumbBmp, THUMB_TARGET_WIDTH, THUMB_TARGET_HEIGHT);
     // Explicitly close() files before calling Storage.remove()
     coverPng.close();
     thumbBmp.close();

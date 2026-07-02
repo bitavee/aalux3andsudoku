@@ -39,7 +39,7 @@ constexpr int kButtonHintsHeight = 30;
 // Heights at which cover thumbnails should be cached. Used both at render time
 // (to look up the BMP via UITheme::getCoverThumbPath) and at preload time (so
 // HomeActivity can call epub.generateThumbBmp() with matching sizes).
-constexpr int kHeroCoverHeight = 450;
+constexpr int kHeroCoverHeight = 300;
 constexpr int kThumbnailCoverHeight = 210;
 
 constexpr int kCoverCornerRadius = 6;

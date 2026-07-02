@@ -6,7 +6,6 @@
 #include "../Activity.h"
 #include "RecentBooksStore.h"
 #include "components/CarrouselRenderer.h"
-#include "components/HomeRenderer.h"
 #include "components/themes/BaseTheme.h"  // for Rect
 
 // Tile in the recents area. A tile is either a single book or a "series
@@ -92,8 +91,6 @@ class HomeActivity final : public Activity {
   Rect carrouselAreaRect() const;
   void renderFull();
   void renderFullCarrousel();
-  void drawFlatCovers();
-  std::vector<HomeRenderer::ThumbTileView> buildThumbRow(int startTile);
 
  public:
   explicit HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
