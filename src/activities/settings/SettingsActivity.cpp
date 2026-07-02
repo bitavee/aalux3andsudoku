@@ -13,6 +13,7 @@
 #include "MappedInputManager.h"
 #include "OtaUpdateActivity.h"
 #include "SdCardFontSystem.h"
+#include "SdFirmwareUpdateActivity.h"
 #include "SettingsList.h"
 #include "StatusBarSettingsActivity.h"
 #include "activities/network/CrossPointWebServerActivity.h"
@@ -61,6 +62,8 @@ void SettingsActivity::onEnter() {
       SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache).inSection(StrId::STR_SECT_TOOLS));
   systemSettings.push_back(
       SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates).inSection(StrId::STR_SECT_TOOLS));
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate)
+                               .inSection(StrId::STR_SECT_TOOLS));
   // Language selector removed in 1.2.0 — firmware ships English-only. The LanguageSelectActivity
   // class is left in place for now in case multi-lang support returns; the dead-code-elimination
   // pass removes it from the binary since no reachable code references it.
@@ -255,6 +258,9 @@ void SettingsActivity::activateCurrentSetting() {
       break;
     case SettingAction::CheckForUpdates:
       startActivityForResult(std::make_unique<OtaUpdateActivity>(renderer, mappedInput), resultHandler);
+      break;
+    case SettingAction::SdFirmwareUpdate:
+      startActivityForResult(std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInput), resultHandler);
       break;
     case SettingAction::FileTransfer:
       startActivityForResult(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput), resultHandler);

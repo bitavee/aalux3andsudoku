@@ -31,7 +31,7 @@ enum class Result {
 
 using ProgressCb = void (*)(size_t bytesDone, size_t bytesTotal, void* ctx);
 
-Result flashFromSdPath(const char* path, ProgressCb onProgress, void* ctx, bool dryRun);
+Result flashFromSdPath(const char* path, ProgressCb onProgress, void* ctx, bool dryRun = false);
 Result validateImageFile(const char* path, size_t expectedSize);
 const char* resultName(Result r);
 

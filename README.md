@@ -74,6 +74,10 @@ Everything below is on top of what Seek Reader / CrossPoint already do.
 - **Configurable button layout** — front button mapping plus page-nav swap.
 - **Four orientations** — portrait, inverted portrait, landscape CW/CCW.
 
+### Installing & recovery
+- **SD-card firmware update** — drop `update.bin` on the SD-card root and install it from Settings → SD card firmware update, no cable required. Also works as the first-install path on a locked stock device (the stock bootloader picks it up at boot).
+- **Recovery mode** — hold **Up + Power** at boot to jump straight to the SD update screen, even if the normal UI won't load.
+
 ### Stability
 - **Heap-aware activity transitions** — the home screen's 48KB framebuffer cache is dropped before launching any sub-activity, so heap-hungry features (File Transfer's WiFi + WebServer + WebSockets) get the room they need.
 - **Cascading cover fallbacks** — when a cover thumb isn't on disk at the resolution stats wants, we render from the home page's pregenerated thumb so the page never shows a blank cover.
@@ -92,9 +96,65 @@ The official Xteink firmware can always be restored via their web flasher: <http
 
 ---
 
-## Installing
+## Installing / flashing AALU
 
-AALU is built with PlatformIO. The only way to get it on a device today is to compile and flash it yourself over USB-C.
+There are a few distinct ways to get AALU onto an X4, and which one applies depends on your device's state (unlocked vs. locked stock firmware) and whether it's already running AALU. They are **not interchangeable** — pick the row that matches you.
+
+Every release publishes two files that are byte-for-byte the same firmware under two names:
+
+- **`firmware.bin`** — the app image, used by the web flasher, `esptool`, and Wi-Fi OTA.
+- **`update.bin`** — the exact same bytes renamed, used by the SD-card update paths (the stock bootloader and AALU's in-firmware updater both look for this name).
+
+> **All flashing paths write the AALU app at offset `0x10000`. Never write to `0x0`** — that overwrites the bootloader and bricks the device.
+
+### Already-unlocked device, over a USB cable
+
+If your X4 accepts USB flashing (developer-unlocked), the simplest routes are:
+
+- **Web flasher** — open <https://xteink.dve.al/>, choose **Custom .bin**, and select AALU's `firmware.bin`.
+- **esptool CLI:**
+
+  ```bash
+  pip install esptool
+  esptool.py --chip esp32c3 --port <YOUR_PORT> --baud 921600 write_flash 0x10000 firmware.bin
+  ```
+
+  Replace `<YOUR_PORT>` with your serial port (macOS `/dev/cu.usbmodem*`, Linux `/dev/ttyACM*`/`ttyUSB*`, Windows `COMx`).
+
+### Locked stock device — first install via SD card (`update.bin`)
+
+Stock X4 units are locked so that **USB flashing is disabled**, but SD-card updates still work. To install AALU for the first time on such a device:
+
+1. Download AALU's `update.bin` (or rename a downloaded `firmware.bin` to `update.bin`).
+2. Copy it to the **root** of the SD card (FAT32 or exFAT).
+3. Insert the card, connect USB power, and hold **Power + Up** (the top side button) as the device powers on.
+
+This triggers the **closed stock Xteink bootloader** (not AALU code) to detect `update.bin` at the SD root and write it to the app partition. The Power + Up combo here is the *stock bootloader's* documented X4 update trigger — coincidentally the same buttons AALU later uses for its own recovery mode, but an entirely separate mechanism (AALU's hook only exists once AALU is flashed). Because this path depends on closed stock firmware, confirm the exact combo for your unit before relying on it; it works at all only because the lock disables USB flashing, not SD updates. You **must** use the **X4** image — a wrong-model image is the real brick risk.
+
+### Locked device via the Wi-Fi Unlocker
+
+A third-party **Xteink Unlocker** tool exists for locked devices. Note that **AALU is not in its hardcoded list of supported firmwares** — it's a third-party tool outside this project's control, and we can't guarantee it behaves with AALU. For locked devices, the supported path is the `update.bin` SD-card install above.
+
+### Device already running AALU
+
+Once AALU is on the device, you have three ways to update it:
+
+- **In-firmware SD update** — put `update.bin` on the SD-card root, then go to **Settings → SD card firmware update** and confirm.
+- **Recovery mode** — hold **Up + Power** at boot to jump straight to the SD update screen, even if the normal UI won't load (useful after a bad flash or a USB lock).
+- **Wi-Fi OTA** — the existing "check for updates" flow downloads and installs over the network.
+
+### Safety caveats
+
+- **Do not power off during flashing.** Keep the battery charged before you start.
+- **Use the X4 image.** A wrong-model image is the one thing that can genuinely brick the device.
+- The firmware must fit a single OTA slot; the released images already do.
+- The locked-device `update.bin` path depends on closed stock firmware behaviour we don't control — validate it on your own device before relying on it.
+
+---
+
+## Building from source
+
+AALU is built with PlatformIO. To compile and flash it yourself over USB-C:
 
 ### Prerequisites
 
@@ -192,6 +252,7 @@ For the gory format details, see [`docs/file-formats.md`](./docs/file-formats.md
 
 AALU is **actively developed** — I'm using it as my daily reader and shaping it as I go. Recent work has landed:
 
+- ✅ SD-card `update.bin` flashing + Up + Power recovery mode (no cable required; first-install path for locked devices)
 - ✅ Carrousel home style — a cover-flow home with progress-on-cover and a Streak / Goal / Pet stats strip
 - ✅ Reading companion (pet) that evolves cat → tiger → dragon as you read
 - ✅ Stats calendar heatmap, achievement badges, and a "Wrapped" year-in-review

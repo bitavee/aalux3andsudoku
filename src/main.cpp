@@ -26,6 +26,7 @@
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/boot_sleep/BootActivity.h"
+#include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "stats/ReadingStatsManager.h"  // added when developing Statistics menu
@@ -251,7 +252,9 @@ void setup() {
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 
-  switch (gpio.getWakeupReason()) {
+  const HalGPIO::WakeupReason wakeupReason = gpio.getWakeupReason();
+
+  switch (wakeupReason) {
     case HalGPIO::WakeupReason::PowerButton:
       // For normal wakeups, verify power button press duration
       LOG_DBG("MAIN", "Verifying power button press duration");
@@ -275,6 +278,29 @@ void setup() {
   setupDisplayAndFonts();
 
   sdFontSystem.begin(renderer);
+
+  // Recovery firmware mode: hold the up side button (BTN_UP) together with the power button at
+  // boot to skip directly to the SD-card firmware update screen. Useful on devices where USB
+  // flashing has been locked down or a half-flashed image left the normal UI unusable.
+  bool recoveryFirmwareMode = false;
+  if (wakeupReason == HalGPIO::WakeupReason::PowerButton) {
+    const unsigned long settleStart = millis();
+    while (millis() - settleStart < 500) {
+      gpio.update();
+      delay(10);
+    }
+    if (gpio.isPressed(HalGPIO::BTN_UP)) {
+      recoveryFirmwareMode = true;
+      LOG_INF("MAIN", "Recovery firmware mode (UP + POWER held at boot)");
+    }
+  }
+
+  if (recoveryFirmwareMode) {
+    activityManager.replaceActivity(
+        std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInputManager, /*recoveryMode=*/true));
+    waitForPowerRelease();
+    return;
+  }
 
   // Load persisted state up-front so we can decide whether to show the boot
   // logo or jump straight to the resuming card. Doing this *before* any first
