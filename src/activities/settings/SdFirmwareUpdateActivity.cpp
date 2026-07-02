@@ -197,7 +197,7 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
 
   if (state == State::NO_FILE) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_NO_UPDATE_BIN));
-    GUI.drawButtonHintsGlyphs(renderer, BaseTheme::ButtonHintGlyphSet::Navigation);
+    GUI.drawButtonHintsGlyphs(renderer, BaseTheme::ButtonHintGlyphSet::Navigation, 0x03);
   } else if (state == State::VALIDATING) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_VALIDATING_FIRMWARE));
   } else if (state == State::UPDATING) {
@@ -225,7 +225,7 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
     if (!errorMessage.empty()) {
       renderer.drawCenteredText(UI_10_FONT_ID, top + lineHeight + metrics.verticalSpacing, errorMessage.c_str());
     }
-    GUI.drawButtonHintsGlyphs(renderer, BaseTheme::ButtonHintGlyphSet::Navigation);
+    GUI.drawButtonHintsGlyphs(renderer, BaseTheme::ButtonHintGlyphSet::Navigation, 0x03);
   } else {
     if (recoveryMode) {
       renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_RECOVERY_MODE));
