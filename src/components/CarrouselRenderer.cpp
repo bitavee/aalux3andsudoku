@@ -197,9 +197,12 @@ Rect CarrouselRenderer::centerCoverRect(GfxRenderer& renderer, const Rect& area)
 
 void CarrouselRenderer::drawCoverInto(GfxRenderer& renderer, const Rect& dst, const RecentBook& book,
                                       int targetHeight) {
+  const bool bwPass = renderer.getRenderMode() == GfxRenderer::BW;
   if (book.coverBmpPath.empty()) {
-    renderer.roundCoverCorners(dst.x, dst.y, dst.width, dst.height, HomeRenderer::kCoverCornerRadius);
-    renderer.drawRoundedRect(dst.x, dst.y, dst.width, dst.height, 1, HomeRenderer::kCoverCornerRadius, true);
+    if (bwPass) {
+      renderer.roundCoverCorners(dst.x, dst.y, dst.width, dst.height, HomeRenderer::kCoverCornerRadius);
+      renderer.drawRoundedRect(dst.x, dst.y, dst.width, dst.height, 1, HomeRenderer::kCoverCornerRadius, true);
+    }
     return;
   }
   const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, targetHeight);
@@ -208,19 +211,17 @@ void CarrouselRenderer::drawCoverInto(GfxRenderer& renderer, const Rect& dst, co
   if (Storage.openFileForRead("CARR", thumbPath, file)) {
     Bitmap bitmap(file);
     if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-      if (bitmap.is1Bit()) {
-        renderer.drawBitmapStretched1Bit(bitmap, dst.x, dst.y, dst.width, dst.height);
-      } else {
-        renderer.drawBitmap(bitmap, dst.x, dst.y, dst.width, dst.height);
-      }
+      renderer.drawPerspectiveBitmap(bitmap, dst.x, dst.y, dst.width, dst.height, dst.height);
       drawn = true;
     }
     file.close();
   }
-  if (!drawn) {
-    renderer.drawRoundedRect(dst.x, dst.y, dst.width, dst.height, 1, HomeRenderer::kCoverCornerRadius, true);
+  if (bwPass) {
+    if (!drawn) {
+      renderer.drawRoundedRect(dst.x, dst.y, dst.width, dst.height, 1, HomeRenderer::kCoverCornerRadius, true);
+    }
+    renderer.roundCoverCorners(dst.x, dst.y, dst.width, dst.height, HomeRenderer::kCoverCornerRadius);
   }
-  renderer.roundCoverCorners(dst.x, dst.y, dst.width, dst.height, HomeRenderer::kCoverCornerRadius);
 }
 
 void CarrouselRenderer::drawSideTileCached(GfxRenderer& renderer, int slot, const Rect& bbox, const RecentBook& book,
@@ -267,8 +268,9 @@ void CarrouselRenderer::drawSideTileCached(GfxRenderer& renderer, int slot, cons
 
 void CarrouselRenderer::drawPerspectiveCoverInto(GfxRenderer& renderer, const Rect& bbox, const RecentBook& book,
                                                  int hL, int hR, int targetHeight) {
+  const bool bwPass = renderer.getRenderMode() == GfxRenderer::BW;
   if (book.coverBmpPath.empty()) {
-    drawPerspectiveOutline(renderer, bbox, hL, hR, true);
+    if (bwPass) drawPerspectiveOutline(renderer, bbox, hL, hR, true);
     return;
   }
   const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, targetHeight);
@@ -282,11 +284,9 @@ void CarrouselRenderer::drawPerspectiveCoverInto(GfxRenderer& renderer, const Re
     }
     file.close();
   }
-  if (!drawn) {
-    drawPerspectiveOutline(renderer, bbox, hL, hR, true);
-    return;
+  if (bwPass) {
+    drawPerspectiveOutline(renderer, bbox, hL, hR, !drawn);
   }
-  drawPerspectiveOutline(renderer, bbox, hL, hR, false);
 }
 
 void CarrouselRenderer::drawPerspectiveOutline(GfxRenderer& renderer, const Rect& bbox, int hL, int hR, bool fill) {
@@ -315,15 +315,10 @@ void CarrouselRenderer::drawPerspectiveOutline(GfxRenderer& renderer, const Rect
   renderer.fillRect(rightX - 1, bbox.y + topR, 2, hR, true);
 }
 
-void CarrouselRenderer::drawFull(GfxRenderer& renderer, const Rect& area, const std::vector<RecentBook>& recents,
-                                 int centerIndex, bool focused) {
+void CarrouselRenderer::drawCovers(GfxRenderer& renderer, const Rect& area, const std::vector<RecentBook>& recents,
+                                   int centerIndex, bool withFrame) {
   const int count = static_cast<int>(recents.size());
-  if (count == 0) {
-    const int cy = area.y + area.height / 2 - renderer.getLineHeight(UI_12_FONT_ID);
-    renderer.drawCenteredText(UI_12_FONT_ID, cy, tr(STR_NO_OPEN_BOOK), true, EpdFontFamily::BOLD);
-    renderer.drawCenteredText(UI_10_FONT_ID, cy + renderer.getLineHeight(UI_12_FONT_ID) + 8, tr(STR_BROWSE_TO_OPEN));
-    return;
-  }
+  if (count == 0) return;
 
   const int n = std::min(kVisibleCovers, count);
   int cur = centerIndex;
@@ -351,30 +346,51 @@ void CarrouselRenderer::drawFull(GfxRenderer& renderer, const Rect& area, const 
   const int idxRightFar = (cur + 2) % n;
 
   if (n >= 5) {
-    drawSideTileCached(renderer, 0, Rect{leftFarX, drawY, sideW, sideBoxH}, recents[idxLeftFar], innerH, outerH,
-                       HomeRenderer::kThumbnailCoverHeight);
+    drawPerspectiveCoverInto(renderer, Rect{leftFarX, drawY, sideW, sideBoxH}, recents[idxLeftFar], innerH, outerH,
+                             HomeRenderer::kThumbnailCoverHeight);
   }
   if (n >= 4) {
-    drawSideTileCached(renderer, 1, Rect{rightFarX, drawY, sideW, sideBoxH}, recents[idxRightFar], outerH, innerH,
-                       HomeRenderer::kThumbnailCoverHeight);
+    drawPerspectiveCoverInto(renderer, Rect{rightFarX, drawY, sideW, sideBoxH}, recents[idxRightFar], outerH, innerH,
+                             HomeRenderer::kThumbnailCoverHeight);
   }
   if (n >= 2) {
-    drawSideTileCached(renderer, 2, Rect{leftNearX, drawY, sideW, sideBoxH}, recents[idxLeftNear], innerH, outerH,
-                       HomeRenderer::kThumbnailCoverHeight);
+    drawPerspectiveCoverInto(renderer, Rect{leftNearX, drawY, sideW, sideBoxH}, recents[idxLeftNear], innerH, outerH,
+                             HomeRenderer::kThumbnailCoverHeight);
   }
   if (n >= 3) {
-    drawSideTileCached(renderer, 3, Rect{rightNearX, drawY, sideW, sideBoxH}, recents[idxRightNear], outerH, innerH,
-                       HomeRenderer::kThumbnailCoverHeight);
+    drawPerspectiveCoverInto(renderer, Rect{rightNearX, drawY, sideW, sideBoxH}, recents[idxRightNear], outerH, innerH,
+                             HomeRenderer::kThumbnailCoverHeight);
   }
 
-  constexpr int kCenterFrame = 5;
-  renderer.fillRect(center.x - kCenterFrame, center.y - kCenterFrame, center.width + 2 * kCenterFrame,
-                    center.height + 2 * kCenterFrame, false);
+  if (withFrame) {
+    constexpr int kCenterFrame = 5;
+    const bool clearPlane = renderer.getRenderMode() != GfxRenderer::BW;
+    renderer.fillRect(center.x - kCenterFrame, center.y - kCenterFrame, center.width + 2 * kCenterFrame,
+                      center.height + 2 * kCenterFrame, clearPlane);
+  }
+  drawCoverInto(renderer, center, recents[cur], HomeRenderer::kHeroCoverHeight);
 
-  const RecentBook& centerBook = recents[cur];
-  drawCoverInto(renderer, center, centerBook, HomeRenderer::kHeroCoverHeight);
-  const int8_t centerProgress = HomeProgressCache::getInstance().getProgress(centerBook.path);
+  const int8_t centerProgress = HomeProgressCache::getInstance().getProgress(recents[cur].path);
   HomeRenderer::drawCoverProgressOverlay(renderer, center.x, center.y, center.width, center.height, centerProgress);
+}
+
+void CarrouselRenderer::drawFull(GfxRenderer& renderer, const Rect& area, const std::vector<RecentBook>& recents,
+                                 int centerIndex, bool focused) {
+  const int count = static_cast<int>(recents.size());
+  if (count == 0) {
+    const int cy = area.y + area.height / 2 - renderer.getLineHeight(UI_12_FONT_ID);
+    renderer.drawCenteredText(UI_12_FONT_ID, cy, tr(STR_NO_OPEN_BOOK), true, EpdFontFamily::BOLD);
+    renderer.drawCenteredText(UI_10_FONT_ID, cy + renderer.getLineHeight(UI_12_FONT_ID) + 8, tr(STR_BROWSE_TO_OPEN));
+    return;
+  }
+
+  drawCovers(renderer, area, recents, centerIndex, /*withFrame=*/true);
+
+  int cur = centerIndex;
+  const int n = std::min(kVisibleCovers, count);
+  if (cur < 0 || cur >= n) cur = 0;
+  const CarrouselLayout layout = computeLayout(renderer, area);
+  const RecentBook& centerBook = recents[cur];
 
   const time_t nowEpoch = time(nullptr);
   const auto& global = StatsManager.getGlobal();

@@ -21,6 +21,7 @@
 #include "activities/stats/StatsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "components/CarrouselRenderer.h"
+#include "components/GrayscaleCoverPass.h"
 #include "components/HomeProgressCache.h"
 #include "components/HomeRenderer.h"
 #include "components/UITheme.h"
@@ -429,7 +430,8 @@ void HomeActivity::loadRecentCovers() {
       continue;
     }
 
-    const int targetHeight = (i == 0) ? HomeRenderer::kHeroCoverHeight : HomeRenderer::kThumbnailCoverHeight;
+    const int targetHeight =
+        (carrouselStyle || i == 0) ? HomeRenderer::kHeroCoverHeight : HomeRenderer::kThumbnailCoverHeight;
     const std::string thumbPath = UITheme::getCoverThumbPath(book.coverBmpPath, targetHeight);
     if (Storage.exists(thumbPath.c_str())) {
       ++progress;
@@ -791,6 +793,30 @@ Rect HomeActivity::focusedItemRect() const {
 
 // ---------- Rendering ----------
 
+std::vector<HomeRenderer::ThumbTileView> HomeActivity::buildThumbRow(int startTile) {
+  std::vector<HomeRenderer::ThumbTileView> views;
+  const int endTile = std::min(static_cast<int>(tiles.size()), startTile + kThumbsPerRow);
+  views.reserve(endTile - startTile);
+  for (int t = startTile; t < endTile; ++t) {
+    const HomeTile& tile = tiles[t];
+    if (tile.bookIndices.empty()) continue;
+    const int badgeCount =
+        tile.displayStackSize > 0 ? tile.displayStackSize : static_cast<int>(tile.bookIndices.size());
+    views.push_back({&recentBooks[tile.bookIndices[0]], badgeCount});
+  }
+  return views;
+}
+
+void HomeActivity::drawFlatCovers() {
+  if (tiles.empty()) return;
+  const RecentBook& heroBook = recentBooks[tiles[0].bookIndices[0]];
+  const int8_t heroProgress = HomeProgressCache::getInstance().getProgress(heroBook.path);
+  HomeRenderer::drawHero(renderer, heroRect(), heroBook, heroProgress);
+  if (tiles.size() > 1) {
+    HomeRenderer::drawThumbnailRow(renderer, thumbsRow1Rect(), buildThumbRow(1));
+  }
+}
+
 void HomeActivity::renderFull() {
   renderer.clearScreen();
 
@@ -818,21 +844,7 @@ void HomeActivity::renderFull() {
     HomeRenderer::drawDivider(renderer, dividerRect());
     HomeRenderer::drawSectionLabel(renderer, sectionLabelRect());
 
-    auto buildRow = [&](int startTile) {
-      std::vector<HomeRenderer::ThumbTileView> views;
-      const int endTile = std::min(static_cast<int>(tiles.size()), startTile + kThumbsPerRow);
-      views.reserve(endTile - startTile);
-      for (int t = startTile; t < endTile; ++t) {
-        const HomeTile& tile = tiles[t];
-        if (tile.bookIndices.empty()) continue;
-        const int badgeCount =
-            tile.displayStackSize > 0 ? tile.displayStackSize : static_cast<int>(tile.bookIndices.size());
-        views.push_back({&recentBooks[tile.bookIndices[0]], badgeCount});
-      }
-      return views;
-    };
-
-    HomeRenderer::drawThumbnailRow(renderer, thumbsRow1Rect(), buildRow(1));
+    HomeRenderer::drawThumbnailRow(renderer, thumbsRow1Rect(), buildThumbRow(1));
   }
 
   HomeRenderer::drawBottomMenu(renderer, menuRect());
@@ -877,16 +889,13 @@ void HomeActivity::render(RenderLock&&) {
   };
 
   if (carrouselStyle) {
-    if (coverBufferStored && restoreCoverBuffer()) {
-      drawFocus();
-      renderer.displayBuffer(HalDisplay::FAST_REFRESH);
-      return;
-    }
     renderFullCarrousel();
-    firstRenderDone = true;
-    coverBufferStored = storeCoverBuffer();
     drawFocus();
+    firstRenderDone = true;
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    renderCoversGrayscale(renderer, [&]() {
+      carrousel->drawCovers(renderer, carrouselAreaRect(), recentBooks, carrouselCenter, /*withFrame=*/true);
+    });
     return;
   }
 
@@ -906,19 +915,7 @@ void HomeActivity::render(RenderLock&&) {
   // shell -> covers -> progress refresh stutter on book close.
   renderFull();
   firstRenderDone = true;
-
-  // Snapshot the bare home (no selection border) so subsequent focus
-  // changes can restore-and-redraw cheaply. This 48 KB malloc can fail
-  // when the heap is fragmented — most notably right after a File
-  // Transfer / WiFi session, where the WebServer + WebSocket + DNS + mDNS
-  // teardown leaves total free heap above 48 KB but no contiguous block.
-  coverBufferStored = storeCoverBuffer();
-  // ALWAYS draw the selection overlay, regardless of whether the snapshot
-  // succeeded. Previously this was gated by `coverBufferStored`, which
-  // meant a fragmented-heap malloc failure made the user's focus
-  // disappear from the home grid until reboot. The snapshot is just a
-  // render-perf optimization for the *next* frame; the overlay itself must
-  // show on this frame either way.
   drawFocus();
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+  renderCoversGrayscale(renderer, [&]() { drawFlatCovers(); });
 }

@@ -18,6 +18,7 @@
 #include "activities/ActivityManager.h"
 #include "activities/reader/ReaderUtils.h"  // for GO_HOME_MS
 #include "activities/util/ConfirmationActivity.h"
+#include "components/GrayscaleCoverPass.h"
 #include "components/HomeProgressCache.h"
 #include "components/HomeRenderer.h"  // kThumbnailCoverHeight, drawStackedCover, drawBottomButtonHints
 #include "components/UITheme.h"
@@ -460,6 +461,33 @@ void BookshelfActivity::renderEmpty() {
   renderer.displayBuffer();
 }
 
+void BookshelfActivity::drawGridCovers() {
+  const int screenW = renderer.getScreenWidth();
+  const int gridTop = gridTopY();
+  const int gridWidth = kCols * kCellW;
+  const int gridLeft = (screenW - gridWidth) / 2;
+  const int vis = visibleRows();
+  const int total = static_cast<int>(tiles.size());
+  for (int i = 0; i < total; ++i) {
+    const int row = rowOf(i);
+    if (row < scrollRow || row >= scrollRow + vis) continue;
+    const int col = colOf(i);
+    const int cellX = gridLeft + col * kCellW;
+    const int cellY = gridTop + (row - scrollRow) * rowStride();
+    const int coverX = cellX + (kCellW - kCoverW) / 2;
+    const int coverY = cellY + kCoverPadTop;
+    const Tile& tile = tiles[i];
+    HomeRenderer::drawStackedCover(renderer, coverX, coverY, kCoverW, kCoverH, tile.thumbPath,
+                                   static_cast<int>(tile.entryIndices.size()));
+    if (tile.entryIndices.size() == 1) {
+      const std::string& bookPath = entries[tile.entryIndices.front()].path;
+      HomeProgressCache::getInstance().loadProgressFor(bookPath);
+      HomeRenderer::drawCoverProgressOverlay(renderer, coverX, coverY, kCoverW, kCoverH,
+                                             HomeProgressCache::getInstance().getProgress(bookPath));
+    }
+  }
+}
+
 void BookshelfActivity::renderGrid() {
   clampFocus();
   clampScroll();
@@ -547,14 +575,13 @@ void BookshelfActivity::renderGrid() {
                       HomeRenderer::kButtonHintsHeight};
   HomeRenderer::drawBottomButtonHints(renderer, hintRect);
 
-  // Snapshot pre-focus framebuffer so focus-only moves restore + stamp.
-  coverBufferStored = storeCoverBuffer();
   lastScrollRow = scrollRow;
   lastFocusIndex = focusIndex;
 
   drawFocusBorder();
 
   renderer.displayBuffer();
+  renderCoversGrayscale(renderer, [this]() { drawGridCovers(); });
 }
 
 void BookshelfActivity::drawFocusBorder() const {

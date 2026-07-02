@@ -36,6 +36,12 @@ class CarrouselRenderer {
   void drawSelectionOnly(GfxRenderer& renderer, const Rect& area, const std::vector<RecentBook>& recents,
                          int centerIndex, bool focused);
 
+  // Draws only the cover bitmaps (side perspective covers + center). Called for
+  // the BW base (withFrame=true, paints the center backing frame) and re-run in
+  // each grayscale plane pass (withFrame=false). Chrome is skipped outside BW.
+  void drawCovers(GfxRenderer& renderer, const Rect& area, const std::vector<RecentBook>& recents, int centerIndex,
+                  bool withFrame);
+
   static Rect centerCoverRect(GfxRenderer& renderer, const Rect& area);
 
  private:

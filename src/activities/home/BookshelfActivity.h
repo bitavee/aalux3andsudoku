@@ -80,6 +80,7 @@ class BookshelfActivity final : public Activity {
   // --- Rendering ---
   void renderGrid();
   void renderEmpty();
+  void drawGridCovers();
   void drawFocusBorder() const;
   bool storeCoverBuffer();
   bool restoreCoverBuffer();
