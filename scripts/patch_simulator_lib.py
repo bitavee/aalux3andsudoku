@@ -45,12 +45,14 @@ LIBDEPS_DIR = env.subst("$PROJECT_LIBDEPS_DIR")
 SIM_SRC = os.path.join(LIBDEPS_DIR, PIOENV, "simulator", "src")
 HAL_GPIO_PATH = os.path.join(SIM_SRC, "HalGPIO.cpp")
 HAL_DISPLAY_PATH = os.path.join(SIM_SRC, "HalDisplay.h")
+HAL_DISPLAY_CPP_PATH = os.path.join(SIM_SRC, "HalDisplay.cpp")
 HAL_CLOCK_PATH = os.path.join(SIM_SRC, "HalClock.cpp")
+FREERTOS_PATH = os.path.join(SIM_SRC, "freertos", "FreeRTOS.h")
 
 # Sentinel changes per patch revision so an old patched copy doesn't satisfy
 # the idempotency check and silently miss the new fix. If we ever ship a
 # v3 of this patch, bump the sentinel string again.
-HAL_GPIO_SENTINEL = "long-press v2: preserve heldTime across the release tick"
+HAL_GPIO_SENTINEL = "long-press v2: also report duration on the release tick"
 
 _HAL_GPIO_UPDATE_ORIGINAL = """void HalGPIO::update() {
   // Reset per-frame state
@@ -187,26 +189,69 @@ _HAL_GPIO_HELDTIME_REPLACEMENT = """unsigned long HalGPIO::getHeldTime() const {
 
 
 # HalDisplay.h: AALU's merged GfxRenderer calls the device differential-refresh
-# and tiled-grayscale API, which the sim lib's HalDisplay predates. Inject no-op
-# / fallback stubs. supportsStripGrayscale() returns false so the renderer takes
-# its existing non-strip grayscale path (which the sim already supports).
-HAL_DISPLAY_SENTINEL = "AALU: device differential-refresh / tiled-grayscale API"
+# and tiled-grayscale API, which the sim lib's HalDisplay predates. Inject the
+# missing declarations. supportsStripGrayscale() returns true so the renderer
+# takes its 4-level grayscale path; the actual compositing is implemented in
+# HalDisplay.cpp (see the HalDisplay.cpp patch below) so the emulator renders
+# real 4-level gray like the device instead of a black-and-white fallback.
+HAL_DISPLAY_SENTINEL = "AALU: device differential-refresh / tiled-grayscale API v2 (grayscale enabled)"
 
 _HAL_DISPLAY_ORIGINAL = """  void cleanupGrayscaleBuffers(const uint8_t *bwBuffer);"""
 
 _HAL_DISPLAY_REPLACEMENT = """  void cleanupGrayscaleBuffers(const uint8_t *bwBuffer);
 
-  // AALU: device differential-refresh / tiled-grayscale API. The sim has no
-  // e-ink controller, so strip grayscale is unsupported (the renderer falls
-  // back to its non-strip path) and the base/precondition calls degrade to a
-  // normal present / no-op.
+  // AALU: device differential-refresh / tiled-grayscale API v2 (grayscale enabled).
+  // supportsStripGrayscale() returns true so covers take the 4-level grayscale
+  // path; copyGrayscaleLsb/MsbBuffers + displayGrayBuffer (patched into
+  // HalDisplay.cpp) composite the two 1-bit planes onto the BW base so the
+  // emulator shows the same 4 gray levels as the device.
   void displayGrayscaleBase(RefreshMode fallback = HALF_REFRESH, bool turnOffScreen = false) {
     displayBuffer(fallback, turnOffScreen);
   }
   void preconditionGrayscale() {}
   void preconditionGrayscale(uint16_t, uint16_t, uint16_t, uint16_t) {}
   void writeGrayscalePlaneStrip(bool, const uint8_t *, uint16_t, uint16_t) {}
-  bool supportsStripGrayscale() const { return false; }"""
+  bool supportsStripGrayscale() const { return true; }"""
+
+
+# HalDisplay.cpp: implement the grayscale composite for the simulator. The sim
+# lib ships these as no-ops. GfxRenderer renders two 1-bit planes into the
+# framebuffer (LSB bit set for gray value 1, MSB bit set for values 1 or 2) and
+# hands each to copyGrayscale*Buffers; displayGrayBuffer merges them onto the
+# already-presented BW base (value 0 -> black, value 3 -> white).
+HAL_DISPLAY_CPP_SENTINEL = "AALU: composite 4-level grayscale onto the BW base"
+
+_HAL_DISPLAY_CPP_ORIGINAL = """void HalDisplay::copyGrayscaleBuffers(const uint8_t *, const uint8_t *) {}
+void HalDisplay::copyGrayscaleLsbBuffers(const uint8_t *) {}
+void HalDisplay::copyGrayscaleMsbBuffers(const uint8_t *) {}
+void HalDisplay::cleanupGrayscaleBuffers(const uint8_t *) {}
+void HalDisplay::displayGrayBuffer(bool, const unsigned char *, bool) {}"""
+
+_HAL_DISPLAY_CPP_REPLACEMENT = """// AALU: composite 4-level grayscale onto the BW base. GfxRenderer renders the
+// gray image as two 1-bit planes (LSB bit set for gray value 1, MSB bit set for
+// values 1 or 2) and hands each framebuffer here. displayGrayBuffer merges them
+// onto pixelBuf, which already holds the BW base from the prior displayBuffer
+// (value 0 -> black, value 3 -> white). Same bit layout as refreshDisplay.
+static uint8_t aaluGrayLsb[HalDisplay::BUFFER_SIZE];
+static uint8_t aaluGrayMsb[HalDisplay::BUFFER_SIZE];
+void HalDisplay::copyGrayscaleBuffers(const uint8_t *, const uint8_t *) {}
+void HalDisplay::copyGrayscaleLsbBuffers(const uint8_t *lsb) {
+  if (lsb) memcpy(aaluGrayLsb, lsb, BUFFER_SIZE);
+}
+void HalDisplay::copyGrayscaleMsbBuffers(const uint8_t *msb) {
+  if (msb) memcpy(aaluGrayMsb, msb, BUFFER_SIZE);
+}
+void HalDisplay::cleanupGrayscaleBuffers(const uint8_t *) {}
+void HalDisplay::displayGrayBuffer(bool, const unsigned char *, bool) {
+  for (int i = 0; i < DISPLAY_WIDTH * DISPLAY_HEIGHT; i++) {
+    const int byteIdx = i / 8;
+    const int bitIdx = 7 - (i % 8);
+    if (((aaluGrayMsb[byteIdx] >> bitIdx) & 1) == 0) continue;
+    const bool lsb = ((aaluGrayLsb[byteIdx] >> bitIdx) & 1) != 0;
+    pixelBuf[i] = lsb ? 0xFF555555u : 0xFFAAAAAAu;
+  }
+  pendingPresent.store(true);
+}"""
 
 
 # HalClock.cpp: the sim has no RTC and no real WiFi/NTP, so syncFromNTP() is a
@@ -244,12 +289,15 @@ else:
         body = fh.read()
 
     if HAL_GPIO_SENTINEL in body:
-        pass  # already on latest patch, no-op
+        pass  # already patched
+    elif _HAL_GPIO_HELDTIME_ORIGINAL not in body:
+        print("[sim-patch] HalGPIO::getHeldTime: upstream changed — long-press patch skipped (re-derive for new sim lib)")
     else:
-        # If an older patch revision is present, the upstream-original
-        # strings won't match and _apply will hard-fail with a clear msg.
-        body = _apply("HalGPIO::update", _HAL_GPIO_UPDATE_ORIGINAL, _HAL_GPIO_UPDATE_REPLACEMENT, body)
-        body = _apply("HalGPIO::getHeldTime", _HAL_GPIO_HELDTIME_ORIGINAL, _HAL_GPIO_HELDTIME_REPLACEMENT, body)
+        # The pinned sim lib's update() already keeps buttonPressTime across the
+        # KEYUP frame, so only the getHeldTime fix is needed: honor
+        # releasedThisFrame[i] so wasReleased()+getHeldTime() reports the hold
+        # duration on release (SDL_GetKeyboardState is already false by then).
+        body = _apply("HalGPIO::getHeldTime long-press", _HAL_GPIO_HELDTIME_ORIGINAL, _HAL_GPIO_HELDTIME_REPLACEMENT, body)
         with open(HAL_GPIO_PATH, "w", encoding="utf-8") as fh:
             fh.write(body)
 
@@ -261,9 +309,50 @@ else:
 
     if HAL_DISPLAY_SENTINEL in body:
         pass  # already patched
+    elif "supportsStripGrayscale" in body:
+        # Newer sim lib declares the grayscale/differential-refresh API itself
+        # (including native 4-level grayscale). Adding our stubs would redeclare
+        # those members. Skip — the upstream API is a superset of what we need.
+        print("[sim-patch] HalDisplay.h: sim lib already declares the grayscale API — patch not needed")
     else:
         body = _apply("HalDisplay grayscale stubs", _HAL_DISPLAY_ORIGINAL, _HAL_DISPLAY_REPLACEMENT, body)
         with open(HAL_DISPLAY_PATH, "w", encoding="utf-8") as fh:
+            fh.write(body)
+
+# HalDisplay.h: the newer sim lib reads orientation via renderer.getOrientation()
+# and dropped setSimulatorOrientation(int). AALU's GfxRenderer.h still calls it
+# under #ifdef SIMULATOR, so add a no-op sink when the lib doesn't provide one.
+if os.path.exists(HAL_DISPLAY_PATH):
+    with open(HAL_DISPLAY_PATH, "r", encoding="utf-8") as fh:
+        body = fh.read()
+    if "setSimulatorOrientation" in body:
+        pass  # provided by the lib (older sim) or already added
+    else:
+        body = _apply(
+            "HalDisplay setSimulatorOrientation sink",
+            "  void presentIfNeeded();",
+            "  void presentIfNeeded();\n  void setSimulatorOrientation(int) {}",
+            body,
+        )
+        with open(HAL_DISPLAY_PATH, "w", encoding="utf-8") as fh:
+            fh.write(body)
+
+if not os.path.exists(HAL_DISPLAY_CPP_PATH):
+    print(f"[sim-patch] {HAL_DISPLAY_CPP_PATH} missing — will retry next build")
+else:
+    with open(HAL_DISPLAY_CPP_PATH, "r", encoding="utf-8") as fh:
+        body = fh.read()
+
+    if HAL_DISPLAY_CPP_SENTINEL in body:
+        pass  # already patched
+    elif _HAL_DISPLAY_CPP_ORIGINAL not in body:
+        # Newer sim lib implements 4-level grayscale natively (GrayscalePreviewState
+        # + composeGrayscalePreview), so the no-op stubs we replace aren't present.
+        # Skip — the emulator already composites gray like the device.
+        print("[sim-patch] HalDisplay.cpp: sim lib already implements grayscale — patch not needed")
+    else:
+        body = _apply("HalDisplay grayscale composite", _HAL_DISPLAY_CPP_ORIGINAL, _HAL_DISPLAY_CPP_REPLACEMENT, body)
+        with open(HAL_DISPLAY_CPP_PATH, "w", encoding="utf-8") as fh:
             fh.write(body)
 
 if not os.path.exists(HAL_CLOCK_PATH):
@@ -274,7 +363,35 @@ else:
 
     if HAL_CLOCK_SENTINEL in body:
         pass  # already patched
+    elif _HAL_CLOCK_ORIGINAL not in body:
+        print("[sim-patch] HalClock::syncFromNTP: upstream changed — fake-sync patch skipped (clock demo may be unavailable in sim)")
     else:
         body = _apply("HalClock fake sync", _HAL_CLOCK_ORIGINAL, _HAL_CLOCK_REPLACEMENT, body)
         with open(HAL_CLOCK_PATH, "w", encoding="utf-8") as fh:
             fh.write(body)
+
+# freertos/FreeRTOS.h: null-guard the critical-section shims. AALU (like ESP-IDF
+# on the single-core ESP32-C3, where the portMUX is unused) calls
+# taskENTER_CRITICAL(nullptr) / taskEXIT_CRITICAL(nullptr). The newer sim shim
+# dereferences the mux unconditionally (mux->mtx.lock()), so a null mux crashes
+# the render task with a null-mutex EXC_BAD_ACCESS. Guard the deref.
+_FREERTOS_ENTER_ORIGINAL = "inline void taskENTER_CRITICAL(portMUX_TYPE *mux) { mux->mtx.lock(); }"
+_FREERTOS_ENTER_REPLACEMENT = "inline void taskENTER_CRITICAL(portMUX_TYPE *mux) { if (mux) mux->mtx.lock(); }"
+_FREERTOS_EXIT_ORIGINAL = "inline void taskEXIT_CRITICAL(portMUX_TYPE *mux) { mux->mtx.unlock(); }"
+_FREERTOS_EXIT_REPLACEMENT = "inline void taskEXIT_CRITICAL(portMUX_TYPE *mux) { if (mux) mux->mtx.unlock(); }"
+
+if not os.path.exists(FREERTOS_PATH):
+    print(f"[sim-patch] {FREERTOS_PATH} missing — will retry next build")
+else:
+    with open(FREERTOS_PATH, "r", encoding="utf-8") as fh:
+        body = fh.read()
+    if _FREERTOS_ENTER_REPLACEMENT in body:
+        pass  # already patched
+    elif _FREERTOS_ENTER_ORIGINAL not in body:
+        print("[sim-patch] FreeRTOS.h taskENTER_CRITICAL: upstream changed — null-guard skipped (review taskENTER_CRITICAL(nullptr) callers)")
+    else:
+        body = body.replace(_FREERTOS_ENTER_ORIGINAL, _FREERTOS_ENTER_REPLACEMENT)
+        body = body.replace(_FREERTOS_EXIT_ORIGINAL, _FREERTOS_EXIT_REPLACEMENT)
+        with open(FREERTOS_PATH, "w", encoding="utf-8") as fh:
+            fh.write(body)
+        print("[sim-patch] FreeRTOS.h: null-guarded taskENTER_CRITICAL / taskEXIT_CRITICAL")
