@@ -290,6 +290,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
       RenderLock lock(*this);
       fileProgress_ = 0;
       fileTotal_ = file.size;
+      lastRenderedProgress_ = -1;
     }
     requestUpdateAndWait();
 
@@ -306,7 +307,11 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
           mappedInput.wasPressed(MappedInputManager::Button::Back)) {
         cancelRequested_ = true;
       }
-      requestUpdate(true);
+      const int progressBucket = total > 0 ? static_cast<int>((downloaded * 50) / total) : 0;
+      if (progressBucket != lastRenderedProgress_) {
+        lastRenderedProgress_ = progressBucket;
+        requestUpdate(true);
+      }
     });
 
     if (result == HttpDownloader::ABORTED) {
