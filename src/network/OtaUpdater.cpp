@@ -7,9 +7,11 @@
 #ifndef SIMULATOR
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <HalStorage.h>
 #include <NetworkClientSecure.h>
 #include <Update.h>
 
+#include <algorithm>
 #include <memory>
 
 #include "esp_ota_ops.h"
@@ -62,14 +64,62 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
     return HTTP_ERROR;
   }
 
-  String body = http.getString();
+  static constexpr const char* CHECK_TMP = "/.ota_check.json";
+  {
+    HalFile out;
+    if (!Storage.openFileForWrite("OTA", CHECK_TMP, out)) {
+      LOG_ERR("OTA", "Failed to open temp file for update check");
+      http.end();
+      return HTTP_ERROR;
+    }
+    NetworkClient* stream = http.getStreamPtr();
+    if (stream == nullptr) {
+      out.close();
+      http.end();
+      Storage.remove(CHECK_TMP);
+      LOG_ERR("OTA", "No response stream");
+      return HTTP_ERROR;
+    }
+    const int64_t reported = http.getSize();
+    const size_t total = reported > 0 ? static_cast<size_t>(reported) : 0;
+    uint8_t buf[512];
+    size_t received = 0;
+    unsigned long lastDataMs = millis();
+    while (total == 0 || received < total) {
+      if (!http.connected() && stream->available() == 0) {
+        break;
+      }
+      if (millis() - lastDataMs > 15000) {
+        break;
+      }
+      const size_t avail = static_cast<size_t>(stream->available());
+      if (avail == 0) {
+        delay(10);
+        continue;
+      }
+      size_t want = std::min(avail, sizeof(buf));
+      if (total > 0) {
+        want = std::min(want, total - received);
+      }
+      const int n = stream->readBytes(buf, want);
+      if (n <= 0) {
+        delay(10);
+        continue;
+      }
+      out.write(buf, static_cast<size_t>(n));
+      received += static_cast<size_t>(n);
+      lastDataMs = millis();
+    }
+    out.close();
+  }
   http.end();
 
-  if (body.length() == 0) {
-    LOG_ERR("OTA", "GitHub API returned empty body");
+  HalFile in;
+  if (!Storage.openFileForRead("OTA", CHECK_TMP, in)) {
+    LOG_ERR("OTA", "Failed to read update-check response");
+    Storage.remove(CHECK_TMP);
     return HTTP_ERROR;
   }
-  LOG_DBG("OTA", "HTTP 200, %u bytes", static_cast<unsigned>(body.length()));
 
   JsonDocument filter;
   filter["tag_name"] = true;
@@ -78,10 +128,11 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   filter["assets"][0]["size"] = true;
 
   JsonDocument doc;
-  const DeserializationError error =
-      deserializeJson(doc, body.c_str(), body.length(), DeserializationOption::Filter(filter));
+  const DeserializationError error = deserializeJson(doc, in, DeserializationOption::Filter(filter));
+  in.close();
+  Storage.remove(CHECK_TMP);
   if (error) {
-    LOG_ERR("OTA", "JSON parse failed: %s (body bytes=%u)", error.c_str(), static_cast<unsigned>(body.length()));
+    LOG_ERR("OTA", "JSON parse failed: %s", error.c_str());
     return JSON_PARSE_ERROR;
   }
 
