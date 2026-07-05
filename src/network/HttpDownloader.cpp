@@ -1,5 +1,6 @@
 #include "HttpDownloader.h"
 
+#include <Arduino.h>
 #include <HTTPClient.h>
 #include <Logging.h>
 #include <NetworkClient.h>
@@ -7,6 +8,7 @@
 #include <StreamString.h>
 #include <base64.h>
 
+#include <algorithm>
 #include <cstring>
 #include <memory>
 #include <utility>
@@ -16,42 +18,8 @@
 
 namespace {
 constexpr uint16_t HTTP_TIMEOUT_MS = 15000;
-
-class FileWriteStream final : public Stream {
- public:
-  FileWriteStream(FsFile& file, size_t total, HttpDownloader::ProgressCallback progress)
-      : file_(file), total_(total), progress_(std::move(progress)) {}
-
-  size_t write(uint8_t byte) override { return write(&byte, 1); }
-
-  size_t write(const uint8_t* buffer, size_t size) override {
-    // Write-through stream for HTTPClient::writeToStream with progress tracking.
-    const size_t written = file_.write(buffer, size);
-    if (written != size) {
-      writeOk_ = false;
-    }
-    downloaded_ += written;
-    if (progress_ && total_ > 0) {
-      progress_(downloaded_, total_);
-    }
-    return written;
-  }
-
-  int available() override { return 0; }
-  int read() override { return -1; }
-  int peek() override { return -1; }
-  void flush() override { file_.flush(); }
-
-  size_t downloaded() const { return downloaded_; }
-  bool ok() const { return writeOk_; }
-
- private:
-  FsFile& file_;
-  size_t total_;
-  size_t downloaded_ = 0;
-  bool writeOk_ = true;
-  HttpDownloader::ProgressCallback progress_;
-};
+constexpr size_t DOWNLOAD_CHUNK_BYTES = 2048;
+constexpr unsigned long DOWNLOAD_STALL_TIMEOUT_MS = 30000;
 }  // namespace
 
 bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent) {
@@ -162,24 +130,64 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     return FILE_ERROR;
   }
 
-  // Let HTTPClient handle chunked decoding and stream body bytes into the file.
-  FileWriteStream fileStream(file, contentLength, progress);
-  const int writeResult = http.writeToStream(&fileStream);
-
-  file.close();
-  http.end();
-
-  if (writeResult < 0) {
-    LOG_ERR("HTTP", "writeToStream error: %d", writeResult);
+  Stream* stream = http.getStreamPtr();
+  if (stream == nullptr) {
+    LOG_ERR("HTTP", "No response stream");
+    file.close();
+    http.end();
     Storage.remove(destPath.c_str());
     return HTTP_ERROR;
   }
 
-  const size_t downloaded = fileStream.downloaded();
+  uint8_t buf[DOWNLOAD_CHUNK_BYTES];
+  size_t downloaded = 0;
+  bool writeOk = true;
+  unsigned long lastDataMs = millis();
+
+  while (contentLength == 0 || downloaded < contentLength) {
+    if (!http.connected() && stream->available() == 0) {
+      break;
+    }
+    if (millis() - lastDataMs > DOWNLOAD_STALL_TIMEOUT_MS) {
+      LOG_ERR("HTTP", "Stalled at %zu/%zu bytes", downloaded, contentLength);
+      break;
+    }
+
+    const size_t avail = static_cast<size_t>(stream->available());
+    if (avail == 0) {
+      delay(10);
+      continue;
+    }
+
+    size_t want = std::min(avail, DOWNLOAD_CHUNK_BYTES);
+    if (contentLength > 0) {
+      want = std::min(want, contentLength - downloaded);
+    }
+
+    const int bytesRead = stream->readBytes(buf, want);
+    if (bytesRead <= 0) {
+      delay(10);
+      continue;
+    }
+
+    if (file.write(buf, static_cast<size_t>(bytesRead)) != static_cast<size_t>(bytesRead)) {
+      writeOk = false;
+      break;
+    }
+    downloaded += static_cast<size_t>(bytesRead);
+    lastDataMs = millis();
+
+    if (progress && contentLength > 0) {
+      progress(downloaded, contentLength);
+    }
+  }
+
+  file.close();
+  http.end();
+
   LOG_DBG("HTTP", "Downloaded %zu bytes", downloaded);
 
-  // Guard against partial writes even if HTTPClient completes.
-  if (!fileStream.ok()) {
+  if (!writeOk) {
     LOG_ERR("HTTP", "Write failed during download");
     Storage.remove(destPath.c_str());
     return FILE_ERROR;
@@ -191,7 +199,6 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     return HTTP_ERROR;
   }
 
-  // Verify download size if known
   if (contentLength > 0 && downloaded != contentLength) {
     LOG_ERR("HTTP", "Size mismatch: got %zu, expected %zu", downloaded, contentLength);
     Storage.remove(destPath.c_str());
