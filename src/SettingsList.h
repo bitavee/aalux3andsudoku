@@ -98,8 +98,9 @@ inline const std::vector<SettingInfo>& getSettingsList() {
     v.push_back(SettingInfo::Toggle(StrId::STR_LONG_PRESS_SKIP, &CrossPointSettings::longPressChapterSkip,
                                     "longPressChapterSkip", StrId::STR_CAT_CONTROLS));
     v.push_back(SettingInfo::Enum(StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
-                                  {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN}, "shortPwrBtn",
-                                  StrId::STR_CAT_CONTROLS));
+                                  {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH,
+                                   StrId::STR_CYCLE_WALLPAPER},
+                                  "shortPwrBtn", StrId::STR_CAT_CONTROLS));
 
     // --- System ---
     v.push_back(

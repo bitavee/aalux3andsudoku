@@ -26,6 +26,7 @@
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/boot_sleep/BootActivity.h"
+#include "activities/boot_sleep/SleepActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -392,6 +393,26 @@ void loop() {
     lastActivityTime = millis();         // Reset inactivity timer
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
   }
+
+  static bool powerWasPressed = false;
+  static bool powerComboUsed = false;
+  const bool powerNow = gpio.isPressed(HalGPIO::BTN_POWER);
+  if (!powerWasPressed && powerNow) {
+    powerComboUsed = false;
+  }
+  if (powerNow && gpio.isPressed(HalGPIO::BTN_DOWN)) {
+    powerComboUsed = true;
+  }
+  if (powerWasPressed && !powerNow && !powerComboUsed) {
+    if (SETTINGS.shortPwrBtn == CrossPointSettings::REFRESH) {
+      RenderLock lock;
+      renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+    } else if (SETTINGS.shortPwrBtn == CrossPointSettings::CYCLE_WALLPAPER) {
+      RenderLock lock;
+      SleepActivity::cycleWallpaper(renderer);
+    }
+  }
+  powerWasPressed = powerNow;
 
   static bool screenshotButtonsReleased = true;
   if (gpio.isPressed(HalGPIO::BTN_POWER) && gpio.isPressed(HalGPIO::BTN_DOWN)) {

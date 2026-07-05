@@ -134,8 +134,11 @@ class CrossPointSettings {
     REFRESH_FREQUENCY_COUNT
   };
 
-  // Short power button press actions
-  enum SHORT_PWRBTN { IGNORE = 0, SLEEP = 1, PAGE_TURN = 2, SHORT_PWRBTN_COUNT };
+  // Action performed by a short click of the power button.
+  // IGNORE: do nothing. SLEEP: enter deep sleep immediately. PAGE_TURN: turn to
+  // the next page while reading. REFRESH: full-refresh the current screen to
+  // clear e-ink ghosting. CYCLE_WALLPAPER: show the next wallpaper from /.sleep/.
+  enum SHORT_PWRBTN { IGNORE = 0, SLEEP = 1, PAGE_TURN = 2, REFRESH = 3, CYCLE_WALLPAPER = 4, SHORT_PWRBTN_COUNT };
 
   // Hide battery percentage
   enum HIDE_BATTERY_PERCENTAGE { HIDE_NEVER = 0, HIDE_READER = 1, HIDE_ALWAYS = 2, HIDE_BATTERY_PERCENTAGE_COUNT };

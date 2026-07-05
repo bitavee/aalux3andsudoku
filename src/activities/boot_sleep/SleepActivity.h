@@ -9,6 +9,8 @@ class SleepActivity final : public Activity {
       : Activity("Sleep", renderer, mappedInput) {}
   void onEnter() override;
 
+  static void cycleWallpaper(GfxRenderer& renderer);
+
  private:
   void renderDefaultSleepScreen() const;
   void renderCustomSleepScreen() const;

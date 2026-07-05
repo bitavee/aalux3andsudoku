@@ -75,6 +75,7 @@ Everything below is on top of what Seek Reader / CrossPoint already do.
 - **Multiple home themes** — Classic, Lyra, Recent6 Grid (3×2, memory-safe).
 - **Custom boot/sleep screens** — including a cat boot logo because why not.
 - **Configurable button layout** — front button mapping plus page-nav swap.
+- **Short power-button actions** — choose what a quick power tap does (Settings → Controls → Short Power Button Click): ignore, sleep, page turn, **Refresh Screen** (full-refresh to clear e-ink ghosting), or **Cycle Wallpaper** (show the next `/.sleep/` image). A long hold still sleeps.
 - **Four orientations** — portrait, inverted portrait, landscape CW/CCW.
 
 ### Installing & recovery
