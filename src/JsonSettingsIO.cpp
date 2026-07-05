@@ -135,6 +135,8 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
 
   doc["clockHasBeenSynced"] = s.clockHasBeenSynced;
 
+  doc["aaResetDone"] = true;
+
   String json;
   serializeJson(doc, json);
   return Storage.writeFile(path, json);
@@ -213,6 +215,11 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
       }
       s.*(info.valuePtr) = v;
     }
+  }
+
+  if (doc["aaResetDone"].isNull()) {
+    s.textAntiAliasing = 0;
+    if (needsResave) *needsResave = true;
   }
 
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
