@@ -6,6 +6,7 @@
 #include <NetworkClient.h>
 #include <NetworkClientSecure.h>
 #include <StreamString.h>
+#include <WiFi.h>
 #include <base64.h>
 
 #include <algorithm>
@@ -20,6 +21,14 @@ namespace {
 constexpr uint16_t HTTP_TIMEOUT_MS = 15000;
 constexpr size_t DOWNLOAD_CHUNK_BYTES = 2048;
 constexpr unsigned long DOWNLOAD_STALL_TIMEOUT_MS = 30000;
+
+class WifiSleepGuard {
+ public:
+  WifiSleepGuard() { WiFi.setSleep(false); }
+  ~WifiSleepGuard() { WiFi.setSleep(true); }
+  WifiSleepGuard(const WifiSleepGuard&) = delete;
+  WifiSleepGuard& operator=(const WifiSleepGuard&) = delete;
+};
 
 class FileWriteStream final : public Stream {
  public:
@@ -110,6 +119,8 @@ bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent) {
 
 HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,
                                                              ProgressCallback progress) {
+  WifiSleepGuard wifiSleepGuard;
+
   // Use NetworkClientSecure for HTTPS, regular NetworkClient for HTTP
   std::unique_ptr<NetworkClient> client;
   if (UrlUtils::isHttpsUrl(url)) {
