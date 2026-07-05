@@ -55,6 +55,7 @@ jobs:
         with:
           ref: master
           submodules: recursive
+          fetch-depth: 0
 
       - uses: actions/setup-python@v6
         with:
@@ -75,12 +76,37 @@ jobs:
       - name: Prepare update.bin
         run: cp .pio/build/gh_release/firmware.bin .pio/build/gh_release/update.bin
 
+      - name: Generate release notes
+        run: |
+          prev_tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo "")
+          range=""
+          if [ -n "$prev_tag" ]; then
+            range="$prev_tag..HEAD"
+            echo "Changelog range: $range"
+          else
+            echo "No previous tag found; using full history"
+          fi
+          subjects=$(git log $range --first-parent --no-merges --pretty=format:'%s')
+          feats=$(echo "$subjects" | grep -E '^feat(\(.+\))?!?:' | sed -E 's/^feat(\(.+\))?!?: *//; s/^/- /' || true)
+          fixes=$(echo "$subjects" | grep -E '^fix(\(.+\))?!?:' | sed -E 's/^fix(\(.+\))?!?: *//; s/^/- /' || true)
+          others=$(echo "$subjects" | grep -vE '^(feat|fix)(\(.+\))?!?:' | sed -E 's/^/- /' || true)
+          {
+            echo "## What's changed"
+            echo ""
+            if [ -n "$feats" ]; then printf '### Features\n%s\n\n' "$feats"; fi
+            if [ -n "$fixes" ]; then printf '### Fixes\n%s\n\n' "$fixes"; fi
+            if [ -n "$others" ]; then printf '### Other\n%s\n\n' "$others"; fi
+          } > RELEASE_NOTES.md
+          echo "----- RELEASE_NOTES.md -----"
+          cat RELEASE_NOTES.md
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.check-version.outputs.version }}
           name: AALU v${{ needs.check-version.outputs.version }}
           target_commitish: master
+          body_path: RELEASE_NOTES.md
           generate_release_notes: true
           files: |
             .pio/build/gh_release/firmware.bin
