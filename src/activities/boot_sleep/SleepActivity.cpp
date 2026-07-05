@@ -78,50 +78,54 @@ void SleepActivity::cycleWallpaper(GfxRenderer& renderer) {
   }
   FsHelpers::sortFileList(files);
 
-  size_t next = 0;
-  if (APP_STATE.lastSleepImage != UINT8_MAX && static_cast<size_t>(APP_STATE.lastSleepImage) + 1 < files.size()) {
-    next = static_cast<size_t>(APP_STATE.lastSleepImage) + 1;
-  }
+  const size_t count = files.size();
+  const size_t start =
+      (APP_STATE.lastSleepImage == UINT8_MAX) ? 0 : (static_cast<size_t>(APP_STATE.lastSleepImage) + 1) % count;
 
-  const std::string path = std::string(sleepDir) + "/" + files[next];
-  FsFile file;
-  if (!Storage.openFileForRead("SLP", path, file)) {
-    LOG_ERR("SLP", "Cycle wallpaper: cannot open %s", path.c_str());
-    return;
-  }
-  Bitmap bitmap(file, true);
-  if (bitmap.parseHeaders() != BmpReaderError::Ok) {
-    file.close();
-    LOG_ERR("SLP", "Cycle wallpaper: invalid BMP %s", path.c_str());
-    return;
-  }
-
-  const int pageWidth = renderer.getScreenWidth();
-  const int pageHeight = renderer.getScreenHeight();
-  int x, y;
-  if (bitmap.getWidth() > pageWidth || bitmap.getHeight() > pageHeight) {
-    const float ratio = static_cast<float>(bitmap.getWidth()) / static_cast<float>(bitmap.getHeight());
-    const float screenRatio = static_cast<float>(pageWidth) / static_cast<float>(pageHeight);
-    if (ratio > screenRatio) {
-      x = 0;
-      y = std::round((static_cast<float>(pageHeight) - static_cast<float>(pageWidth) / ratio) / 2);
-    } else {
-      x = std::round((static_cast<float>(pageWidth) - static_cast<float>(pageHeight) * ratio) / 2);
-      y = 0;
+  for (size_t attempt = 0; attempt < count; attempt++) {
+    const size_t idx = (start + attempt) % count;
+    const std::string path = std::string(sleepDir) + "/" + files[idx];
+    FsFile file;
+    if (!Storage.openFileForRead("SLP", path, file)) {
+      LOG_ERR("SLP", "Cycle wallpaper: cannot open %s", path.c_str());
+      continue;
     }
-  } else {
-    x = (pageWidth - bitmap.getWidth()) / 2;
-    y = (pageHeight - bitmap.getHeight()) / 2;
+    Bitmap bitmap(file, true);
+    if (bitmap.parseHeaders() != BmpReaderError::Ok) {
+      file.close();
+      LOG_ERR("SLP", "Cycle wallpaper: invalid BMP %s", path.c_str());
+      continue;
+    }
+
+    const int pageWidth = renderer.getScreenWidth();
+    const int pageHeight = renderer.getScreenHeight();
+    int x, y;
+    if (bitmap.getWidth() > pageWidth || bitmap.getHeight() > pageHeight) {
+      const float ratio = static_cast<float>(bitmap.getWidth()) / static_cast<float>(bitmap.getHeight());
+      const float screenRatio = static_cast<float>(pageWidth) / static_cast<float>(pageHeight);
+      if (ratio > screenRatio) {
+        x = 0;
+        y = std::round((static_cast<float>(pageHeight) - static_cast<float>(pageWidth) / ratio) / 2);
+      } else {
+        x = std::round((static_cast<float>(pageWidth) - static_cast<float>(pageHeight) * ratio) / 2);
+        y = 0;
+      }
+    } else {
+      x = (pageWidth - bitmap.getWidth()) / 2;
+      y = (pageHeight - bitmap.getHeight()) / 2;
+    }
+
+    renderer.clearScreen();
+    renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, 0, 0);
+    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+    file.close();
+
+    APP_STATE.lastSleepImage = static_cast<uint8_t>(idx);
+    LOG_DBG("SLP", "Cycled wallpaper to %s", files[idx].c_str());
+    return;
   }
 
-  renderer.clearScreen();
-  renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, 0, 0);
-  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
-  file.close();
-
-  APP_STATE.lastSleepImage = static_cast<uint8_t>(next);
-  APP_STATE.saveToFile();
-  LOG_DBG("SLP", "Cycled wallpaper to %s", files[next].c_str());
+  LOG_ERR("SLP", "Cycle wallpaper: no valid wallpaper found");
 }
 
 void SleepActivity::renderCustomSleepScreen() const {
