@@ -79,7 +79,7 @@ void ReaderActivity::goToLibrary(const std::string& /*fromBookPath*/) {
   // The legacy file browser took a starting folder so reader -> library
   // re-entered next to the current book. Bookshelf is flat (no folders);
   // we always land on the top-left tile.
-  activityManager.goToBookshelf();
+  activityManager.goToLibrary(true);
 }
 
 void ReaderActivity::onGoToEpubReader(std::unique_ptr<Epub> epub) {

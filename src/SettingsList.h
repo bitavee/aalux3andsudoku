@@ -25,6 +25,9 @@ inline const std::vector<SettingInfo>& getSettingsList() {
     v.push_back(SettingInfo::Enum(StrId::STR_HOME_STYLE, &CrossPointSettings::homeStyle,
                                   {StrId::STR_HOME_STYLE_FLAT, StrId::STR_HOME_STYLE_CARROUSEL}, "homeStyle",
                                   StrId::STR_CAT_DISPLAY));
+    v.push_back(SettingInfo::Enum(StrId::STR_BROWSE_MODE, &CrossPointSettings::browseMode,
+                                  {StrId::STR_LIBRARY_VIEW_BOOKSHELF, StrId::STR_LIBRARY_VIEW_FILES}, "browseMode",
+                                  StrId::STR_CAT_DISPLAY));
     v.push_back(SettingInfo::Enum(StrId::STR_SLEEP_SCREEN, &CrossPointSettings::sleepScreen,
                                   {StrId::STR_DARK, StrId::STR_LIGHT, StrId::STR_CUSTOM, StrId::STR_COVER,
                                    StrId::STR_NONE_OPT, StrId::STR_COVER_CUSTOM, StrId::STR_CUSTOM_INSIGHTS},

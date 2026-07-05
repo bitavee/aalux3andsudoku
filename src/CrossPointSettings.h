@@ -148,6 +148,11 @@ class CrossPointSettings {
 
   enum HOME_STYLE { HOME_FLAT = 0, HOME_CARROUSEL = 1, HOME_STYLE_COUNT };
 
+  // How the "browse library" action presents books.
+  // BROWSE_BOOKSHELF: cover-grid bookshelf (default). BROWSE_FILE_BROWSER: a
+  // folder-based file browser mirroring the SD card's directory layout.
+  enum BROWSE_MODE { BROWSE_BOOKSHELF = 0, BROWSE_FILE_BROWSER = 1, BROWSE_MODE_COUNT };
+
   // Sleep screen settings
   uint8_t sleepScreen = DARK;
   // Sleep screen cover mode settings
@@ -218,6 +223,7 @@ class CrossPointSettings {
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
   uint8_t homeStyle = HOME_FLAT;
+  uint8_t browseMode = BROWSE_BOOKSHELF;
   // Bookshelf first-time tooltip: set to 1 after the user dismisses the
   // one-time "Hold Back to refresh" hint. Persists across cache wipes — once
   // the user has learned the gesture, the hint never re-appears.

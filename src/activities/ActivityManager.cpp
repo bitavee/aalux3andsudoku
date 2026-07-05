@@ -1,11 +1,15 @@
 #include "ActivityManager.h"
 
+#include <FsHelpers.h>
 #include <HalPowerManager.h>
 
+#include "CrossPointSettings.h"
+#include "CrossPointState.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
 #include "home/BookshelfActivity.h"
+#include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "reader/ReaderActivity.h"
@@ -169,6 +173,19 @@ void ActivityManager::goToFileTransfer() {
 void ActivityManager::goToSettings() { replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToBookshelf() { replaceActivity(std::make_unique<BookshelfActivity>(renderer, mappedInput)); }
+
+void ActivityManager::goToLibrary(bool fromReader) {
+  if (SETTINGS.browseMode == CrossPointSettings::BROWSE_FILE_BROWSER) {
+    std::string folder = "/";
+    if (fromReader && !APP_STATE.openEpubPath.empty()) {
+      folder = FsHelpers::extractFolderPath(APP_STATE.openEpubPath);
+      if (folder.empty()) folder = "/";
+    }
+    replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, folder));
+  } else {
+    replaceActivity(std::make_unique<BookshelfActivity>(renderer, mappedInput));
+  }
+}
 
 void ActivityManager::goToBrowser() {
   replaceActivity(std::make_unique<OpdsBookBrowserActivity>(renderer, mappedInput));
