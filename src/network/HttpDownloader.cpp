@@ -14,18 +14,31 @@
 #include <memory>
 #include <utility>
 
+#ifndef SIMULATOR
+#include "esp_wifi.h"
+#endif
+
 #include "CrossPointSettings.h"
 #include "util/UrlUtils.h"
 
 namespace {
 constexpr uint16_t HTTP_TIMEOUT_MS = 15000;
 constexpr size_t DOWNLOAD_CHUNK_BYTES = 2048;
-constexpr unsigned long DOWNLOAD_STALL_TIMEOUT_MS = 30000;
+constexpr unsigned long DOWNLOAD_STALL_TIMEOUT_MS = 300000;
 
 class WifiSleepGuard {
  public:
-  WifiSleepGuard() { WiFi.setSleep(false); }
-  ~WifiSleepGuard() { WiFi.setSleep(true); }
+  WifiSleepGuard() {
+#ifndef SIMULATOR
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    esp_wifi_set_max_tx_power(84);
+#endif
+  }
+  ~WifiSleepGuard() {
+#ifndef SIMULATOR
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+#endif
+  }
   WifiSleepGuard(const WifiSleepGuard&) = delete;
   WifiSleepGuard& operator=(const WifiSleepGuard&) = delete;
 };

@@ -8,6 +8,9 @@
 #include <WiFi.h>
 #include <esp_rom_crc.h>
 
+#include <utility>
+#include <vector>
+
 #include "MappedInputManager.h"
 #include "SdCardFontSystem.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -176,31 +179,19 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 // --- Download ---
 
 void FontDownloadActivity::downloadAll() {
-  cancelRequested_ = false;
-  for (size_t i = 0; i < families_.size(); i++) {
-    if (families_[i].installed) continue;
-    downloadFamily(families_[i]);
-    if (state_ == ERROR || cancelRequested_) return;
+  std::vector<std::string> names;
+  for (const auto& f : families_) {
+    if (!f.installed) names.push_back(f.name);
   }
-
-  {
-    RenderLock lock(*this);
-    state_ = COMPLETE;
-  }
+  runDownloads(std::move(names));
 }
 
 void FontDownloadActivity::updateAll() {
-  cancelRequested_ = false;
-  for (size_t i = 0; i < families_.size(); i++) {
-    if (!families_[i].hasUpdate) continue;
-    downloadFamily(families_[i]);
-    if (state_ == ERROR || cancelRequested_) return;
+  std::vector<std::string> names;
+  for (const auto& f : families_) {
+    if (f.hasUpdate) names.push_back(f.name);
   }
-
-  {
-    RenderLock lock(*this);
-    state_ = COMPLETE;
-  }
+  runDownloads(std::move(names));
 }
 
 bool FontDownloadActivity::showDownloadAllRow() const {
@@ -265,26 +256,25 @@ bool FontDownloadActivity::computeFileCrc32(const char* path, uint32_t& outCrc) 
   return true;
 }
 
-void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
+bool FontDownloadActivity::downloadFamilyFiles(const std::string& familyName, const std::vector<ManifestFile>& files) {
   {
     RenderLock lock(*this);
+    downloadingFamilyName_ = familyName;
     state_ = DOWNLOADING;
-    downloadingFamilyIndex_ = static_cast<int>(&family - families_.data());
     fileProgress_ = 0;
     fileTotal_ = 0;
-    cancelRequested_ = false;
   }
   requestUpdateAndWait();
 
-  if (!fontInstaller_.ensureFamilyDir(family.name.c_str())) {
+  if (!fontInstaller_.ensureFamilyDir(familyName.c_str())) {
     RenderLock lock(*this);
     state_ = ERROR;
     errorMessage_ = "Failed to create font directory";
-    return;
+    return false;
   }
 
-  for (size_t i = 0; i < family.files.size(); i++) {
-    const auto& file = family.files[i];
+  for (size_t i = 0; i < files.size(); i++) {
+    const auto& file = files[i];
 
     {
       RenderLock lock(*this);
@@ -295,7 +285,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
     requestUpdateAndWait();
 
     char destPath[128];
-    FontInstaller::buildFontPath(family.name.c_str(), file.name.c_str(), destPath, sizeof(destPath));
+    FontInstaller::buildFontPath(familyName.c_str(), file.name.c_str(), destPath, sizeof(destPath));
 
     std::string url = baseUrl_ + file.name;
 
@@ -315,70 +305,110 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
     });
 
     if (result == HttpDownloader::ABORTED) {
-      fontInstaller_.deleteFamily(family.name.c_str());
-      family.installed = false;
-      family.hasUpdate = false;
-      {
-        RenderLock lock(*this);
-        state_ = FAMILY_LIST;
-      }
-      return;
+      fontInstaller_.deleteFamily(familyName.c_str());
+      cancelRequested_ = true;
+      return false;
     }
 
     if (result != HttpDownloader::OK) {
       LOG_ERR("FONT", "Download failed: %s (%d)", file.name.c_str(), result);
-      fontInstaller_.deleteFamily(family.name.c_str());
-      family.installed = false;
-      family.hasUpdate = false;
+      fontInstaller_.deleteFamily(familyName.c_str());
       RenderLock lock(*this);
       state_ = ERROR;
       errorMessage_ = "Download failed: " + file.name;
-      return;
+      return false;
     }
 
     uint32_t actualCrc = 0;
     if (!computeFileCrc32(destPath, actualCrc)) {
       LOG_ERR("FONT", "Failed to open file for CRC check: %s", destPath);
-      fontInstaller_.deleteFamily(family.name.c_str());
-      family.installed = false;
-      family.hasUpdate = false;
+      fontInstaller_.deleteFamily(familyName.c_str());
       RenderLock lock(*this);
       state_ = ERROR;
       errorMessage_ = "Failed to compute checksum: " + file.name;
-      return;
+      return false;
     }
     if (actualCrc != file.crc32) {
       LOG_ERR("FONT", "CRC32 mismatch for %s: got %08x expected %08x", file.name.c_str(), actualCrc, file.crc32);
-      fontInstaller_.deleteFamily(family.name.c_str());
-      family.installed = false;
-      family.hasUpdate = false;
+      fontInstaller_.deleteFamily(familyName.c_str());
       RenderLock lock(*this);
       state_ = ERROR;
       errorMessage_ = "Checksum mismatch: " + file.name;
-      return;
+      return false;
     }
     LOG_DBG("FONT", "Downloaded %s (size=%zu crc32=%08x)", file.name.c_str(), file.size, actualCrc);
 
     if (!fontInstaller_.validateCpfontFile(destPath)) {
       LOG_ERR("FONT", "Invalid .cpfont: %s", destPath);
-      fontInstaller_.deleteFamily(family.name.c_str());
-      family.installed = false;
-      family.hasUpdate = false;
+      fontInstaller_.deleteFamily(familyName.c_str());
       RenderLock lock(*this);
       state_ = ERROR;
       errorMessage_ = "Invalid font file: " + file.name;
-      return;
+      return false;
     }
     currentFileIndex_++;
   }
 
   fontInstaller_.refreshRegistry();
-  family.installed = true;
-  family.hasUpdate = false;
+  return true;
+}
 
-  {
-    RenderLock lock(*this);
+void FontDownloadActivity::runDownloads(std::vector<std::string> familyNames) {
+  cancelRequested_ = false;
+
+  // Snapshot each target family's file list, then free the parsed manifest.
+  // The 21-family manifest holds ~15KB and fragments the heap; the per-file TLS
+  // handshake needs two 16KB mbedTLS buffers, which fail to allocate unless we
+  // reclaim that space first (the manifest fetch itself succeeds only because it
+  // runs before families_ is parsed).
+  std::vector<std::pair<std::string, std::vector<ManifestFile>>> plan;
+  plan.reserve(familyNames.size());
+  for (const auto& name : familyNames) {
+    for (const auto& f : families_) {
+      if (f.name == name) {
+        plan.emplace_back(name, f.files);
+        break;
+      }
+    }
+  }
+  families_.clear();
+  families_.shrink_to_fit();
+
+  currentFileIndex_ = 0;
+  currentFileTotal_ = 0;
+  for (const auto& p : plan) {
+    currentFileTotal_ += p.second.size();
+  }
+
+  bool ok = true;
+  bool errored = false;
+  for (const auto& p : plan) {
+    if (cancelRequested_) {
+      ok = false;
+      break;
+    }
+    if (!downloadFamilyFiles(p.first, p.second)) {
+      ok = false;
+      errored = !cancelRequested_;
+      break;
+    }
+  }
+
+  const std::string savedError = errorMessage_;
+
+  // Rebuild the family list for the UI; heap is free again now that downloads
+  // are done, so this manifest fetch succeeds.
+  fetchAndParseManifest();
+
+  RenderLock lock(*this);
+  if (ok) {
     state_ = COMPLETE;
+  } else if (errored) {
+    errorMessage_ = savedError;
+    state_ = ERROR;
+  } else {
+    state_ = FAMILY_LIST;
+    selectedIndex_ = 0;
   }
 }
 
@@ -458,26 +488,13 @@ void FontDownloadActivity::loop() {
     if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
       if (!families_.empty()) {
         if (isDownloadAllRow(selectedIndex_)) {
-          currentFileIndex_ = 0;
-          currentFileTotal_ = 0;
-          for (const auto& f : families_) {
-            if (!f.installed) currentFileTotal_ += f.files.size();
-          }
-
           downloadAll();
         } else if (isUpdateAllRow(selectedIndex_)) {
-          currentFileIndex_ = 0;
-          currentFileTotal_ = 0;
-          for (const auto& f : families_) {
-            if (f.hasUpdate) currentFileTotal_ += f.files.size();
-          }
           updateAll();
         } else {
           auto& family = families_[familyIndexFromList(selectedIndex_)];
           if (!family.installed || family.hasUpdate) {
-            currentFileIndex_ = 0;
-            currentFileTotal_ = family.files.size();
-            downloadFamily(family);
+            runDownloads({family.name});
           } else {
             promptDeleteSelectedFamily();
             return;
@@ -504,8 +521,8 @@ void FontDownloadActivity::loop() {
       }
       requestUpdate();
     } else if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-      if (downloadingFamilyIndex_ >= 0 && downloadingFamilyIndex_ < static_cast<int>(families_.size())) {
-        downloadFamily(families_[downloadingFamilyIndex_]);
+      if (!downloadingFamilyName_.empty()) {
+        runDownloads({downloadingFamilyName_});
         requestUpdateAndWait();
         return;
       } else {
@@ -585,9 +602,7 @@ void FontDownloadActivity::render(RenderLock&&) {
       GUI.drawButtonHintsGlyphs(renderer, fontVariant);
     }
   } else if (state_ == DOWNLOADING) {
-    const auto& family = families_[downloadingFamilyIndex_];
-
-    std::string statusText = std::string(tr(STR_DOWNLOADING)) + " " + family.name + " (" +
+    std::string statusText = std::string(tr(STR_DOWNLOADING)) + " " + downloadingFamilyName_ + " (" +
                              std::to_string(currentFileIndex_ + 1) + "/" + std::to_string(currentFileTotal_) + ")";
     renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight, statusText.c_str());
 

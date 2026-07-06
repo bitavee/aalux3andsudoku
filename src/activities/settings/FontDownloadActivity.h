@@ -84,13 +84,17 @@ class FontDownloadActivity : public Activity {
   size_t fileProgress_ = 0;
   size_t fileTotal_ = 0;
   int lastRenderedProgress_ = -1;
-  int downloadingFamilyIndex_ = 0;
+  std::string downloadingFamilyName_;
   std::string errorMessage_;
   bool cancelRequested_ = false;
 
   void onWifiSelectionComplete(bool success);
   bool fetchAndParseManifest();
-  void downloadFamily(ManifestFamily& family);
+  // Downloads the given families by name. Frees families_ first so the per-file
+  // TLS handshakes have enough heap on the 380KB device, then rebuilds families_
+  // from a fresh manifest fetch for the UI.
+  void runDownloads(std::vector<std::string> familyNames);
+  bool downloadFamilyFiles(const std::string& familyName, const std::vector<ManifestFile>& files);
   void downloadAll();
   void updateAll();
   static bool computeFileCrc32(const char* path, uint32_t& outCrc);
