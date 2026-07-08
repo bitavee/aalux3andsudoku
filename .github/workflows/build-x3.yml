@@ -1,0 +1,41 @@
+name: Build X3 Firmware
+
+# Builds on every push to master and can also be triggered manually from the
+# Actions tab. Produces firmware.bin as a downloadable artifact — no need to
+# build locally before flashing your device.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build-x3:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Install PlatformIO Core
+        run: uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+
+      - name: Build AALU for Xteink X3
+        run: pio run -e x3_release
+
+      - name: Upload firmware.bin
+        uses: actions/upload-artifact@v4
+        with:
+          name: aalu-x3-firmware
+          path: .pio/build/x3_release/firmware.bin
+          retention-days: 90
