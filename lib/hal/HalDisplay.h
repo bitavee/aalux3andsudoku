@@ -26,8 +26,13 @@ class HalDisplay {
   void begin(bool seamless = false);
 
   // Display dimensions
+#ifdef AALU_DEVICE_X3
+  static constexpr uint16_t DISPLAY_WIDTH = EInkDisplay::X3_DISPLAY_WIDTH;
+  static constexpr uint16_t DISPLAY_HEIGHT = EInkDisplay::X3_DISPLAY_HEIGHT;
+#else
   static constexpr uint16_t DISPLAY_WIDTH = EInkDisplay::DISPLAY_WIDTH;
   static constexpr uint16_t DISPLAY_HEIGHT = EInkDisplay::DISPLAY_HEIGHT;
+#endif
   static constexpr uint16_t DISPLAY_WIDTH_BYTES = DISPLAY_WIDTH / 8;
   static constexpr uint32_t BUFFER_SIZE = DISPLAY_WIDTH_BYTES * DISPLAY_HEIGHT;
 
