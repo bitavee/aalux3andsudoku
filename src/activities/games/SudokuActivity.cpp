@@ -224,46 +224,67 @@ bool SudokuActivity::checkComplete() {
 }
 
 namespace {
-// Standard randomized backtracking fill — fast enough for a one-time
-// 9x9 generation on boot, no need for anything fancier on a 380KB device.
-bool fillCell(std::array<std::array<uint8_t, 9>, 9>& b, int pos) {
-  if (pos == 81) return true;
-  const int row = pos / 9;
-  const int col = pos % 9;
-
-  uint8_t candidates[9] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
-  for (int i = 8; i > 0; --i) std::swap(candidates[i], candidates[std::rand() % (i + 1)]);
-
-  for (uint8_t v : candidates) {
-    bool ok = true;
-    for (int i = 0; i < 9 && ok; ++i) {
-      if (b[row][i] == v || b[i][col] == v) ok = false;
-    }
-    const int br = (row / 3) * 3;
-    const int bc = (col / 3) * 3;
-    for (int r = br; r < br + 3 && ok; ++r) {
-      for (int c = bc; c < bc + 3 && ok; ++c) {
-        if (b[r][c] == v) ok = false;
-      }
-    }
-
-    if (!ok) continue;
-    b[row][col] = v;
-    if (fillCell(b, pos + 1)) return true;
-    b[row][col] = 0;
+void shuffleArray9(std::array<uint8_t, 9>& arr) {
+  for (int i = 8; i > 0; --i) {
+    const int j = std::rand() % (i + 1);
+    std::swap(arr[i], arr[j]);
   }
-  return false;
+}
+
+std::array<std::array<uint8_t, 9>, 9> buildShuffledGrid() {
+  std::array<std::array<uint8_t, 9>, 9> grid{};
+
+  for (int r = 0; r < 9; ++r) {
+    for (int c = 0; c < 9; ++c) {
+      grid[r][c] = static_cast<uint8_t>(((r * 3 + r / 3 + c) % 9) + 1);
+    }
+  }
+
+  std::array<uint8_t, 9> digitMap = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  shuffleArray9(digitMap);
+  for (auto& row : grid) {
+    for (auto& cell : row) cell = digitMap[cell - 1];
+  }
+
+  std::array<uint8_t, 9> rowOrder = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  for (int band = 0; band < 3; ++band) {
+    std::array<uint8_t, 3> within = {static_cast<uint8_t>(band * 3), static_cast<uint8_t>(band * 3 + 1),
+                                      static_cast<uint8_t>(band * 3 + 2)};
+    for (int i = 2; i > 0; --i) std::swap(within[i], within[std::rand() % (i + 1)]);
+    rowOrder[band * 3] = within[0];
+    rowOrder[band * 3 + 1] = within[1];
+    rowOrder[band * 3 + 2] = within[2];
+  }
+  std::array<uint8_t, 3> bandOrder = {0, 1, 2};
+  for (int i = 2; i > 0; --i) std::swap(bandOrder[i], bandOrder[std::rand() % (i + 1)]);
+
+  std::array<uint8_t, 9> colOrder = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  for (int stack = 0; stack < 3; ++stack) {
+    std::array<uint8_t, 3> within = {static_cast<uint8_t>(stack * 3), static_cast<uint8_t>(stack * 3 + 1),
+                                      static_cast<uint8_t>(stack * 3 + 2)};
+    for (int i = 2; i > 0; --i) std::swap(within[i], within[std::rand() % (i + 1)]);
+    colOrder[stack * 3] = within[0];
+    colOrder[stack * 3 + 1] = within[1];
+    colOrder[stack * 3 + 2] = within[2];
+  }
+  std::array<uint8_t, 3> stackOrder = {0, 1, 2};
+  for (int i = 2; i > 0; --i) std::swap(stackOrder[i], stackOrder[std::rand() % (i + 1)]);
+
+  std::array<std::array<uint8_t, 9>, 9> result{};
+  for (int r = 0; r < 9; ++r) {
+    const int srcRow = bandOrder[r / 3] * 3 + (rowOrder[r] % 3);
+    for (int c = 0; c < 9; ++c) {
+      const int srcCol = stackOrder[c / 3] * 3 + (colOrder[c] % 3);
+      result[r][c] = grid[srcRow][srcCol];
+    }
+  }
+  return result;
 }
 }  // namespace
 
 void SudokuActivity::generatePuzzle() {
-  for (auto& row : board) row.fill(0);
-  fillCell(board, 0);
+  board = buildShuffledGrid();
 
-  // Dig holes for a medium-difficulty puzzle (~45 givens remain). This does
-  // not guarantee a unique solution for the remaining puzzle — fine for a
-  // casual e-reader distraction, but flag it if you want a "no ambiguity"
-  // solver-count check added on top later.
   for (auto& row : given) row.fill(true);
   int toRemove = 36;
   while (toRemove > 0) {
